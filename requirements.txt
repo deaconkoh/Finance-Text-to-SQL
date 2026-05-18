@@ -3,3 +3,4 @@ huggingface_hub
 pyyaml
 tqdm
 mlx-lm
+llama-cpp-python
