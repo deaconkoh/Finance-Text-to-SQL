@@ -1,0 +1,105 @@
+{
+  "total": 535,
+  "valid_sql_count": 231,
+  "execution_correct_count": 115,
+  "exact_string_match_count": 5,
+  "valid_sql_rate": 0.43177570093457945,
+  "execution_accuracy": 0.21495327102803738,
+  "exact_string_match_rate": 0.009345794392523364,
+  "breakdown_by_knowledge_intensity": {
+    "0": {
+      "total": 278,
+      "valid_sql_count": 138,
+      "execution_correct_count": 61,
+      "exact_string_match_count": 5,
+      "valid_sql_rate": 0.49640287769784175,
+      "execution_accuracy": 0.21942446043165467,
+      "exact_string_match_rate": 0.017985611510791366
+    },
+    "1": {
+      "total": 202,
+      "valid_sql_count": 83,
+      "execution_correct_count": 51,
+      "exact_string_match_count": 0,
+      "valid_sql_rate": 0.41089108910891087,
+      "execution_accuracy": 0.2524752475247525,
+      "exact_string_match_rate": 0.0
+    },
+    "2": {
+      "total": 55,
+      "valid_sql_count": 10,
+      "execution_correct_count": 3,
+      "exact_string_match_count": 0,
+      "valid_sql_rate": 0.18181818181818182,
+      "execution_accuracy": 0.05454545454545454,
+      "exact_string_match_rate": 0.0
+    }
+  },
+  "breakdown_by_db_name": {
+    "bird": {
+      "total": 48,
+      "valid_sql_count": 9,
+      "execution_correct_count": 1,
+      "exact_string_match_count": 0,
+      "valid_sql_rate": 0.1875,
+      "execution_accuracy": 0.020833333333333332,
+      "exact_string_match_rate": 0.0
+    },
+    "book_sql": {
+      "total": 195,
+      "valid_sql_count": 179,
+      "execution_correct_count": 91,
+      "exact_string_match_count": 0,
+      "valid_sql_rate": 0.9179487179487179,
+      "execution_accuracy": 0.4666666666666667,
+      "exact_string_match_rate": 0.0
+    },
+    "bull": {
+      "total": 242,
+      "valid_sql_count": 34,
+      "execution_correct_count": 16,
+      "exact_string_match_count": 1,
+      "valid_sql_rate": 0.14049586776859505,
+      "execution_accuracy": 0.06611570247933884,
+      "exact_string_match_rate": 0.004132231404958678
+    },
+    "spider": {
+      "total": 50,
+      "valid_sql_count": 9,
+      "execution_correct_count": 7,
+      "exact_string_match_count": 4,
+      "valid_sql_rate": 0.18,
+      "execution_accuracy": 0.14,
+      "exact_string_match_rate": 0.08
+    }
+  },
+  "breakdown_by_difficulty": {
+    "easy": {
+      "total": 161,
+      "valid_sql_count": 45,
+      "execution_correct_count": 20,
+      "exact_string_match_count": 2,
+      "valid_sql_rate": 0.2795031055900621,
+      "execution_accuracy": 0.12422360248447205,
+      "exact_string_match_rate": 0.012422360248447204
+    },
+    "hard": {
+      "total": 210,
+      "valid_sql_count": 99,
+      "execution_correct_count": 51,
+      "exact_string_match_count": 1,
+      "valid_sql_rate": 0.4714285714285714,
+      "execution_accuracy": 0.24285714285714285,
+      "exact_string_match_rate": 0.004761904761904762
+    },
+    "medium": {
+      "total": 164,
+      "valid_sql_count": 87,
+      "execution_correct_count": 44,
+      "exact_string_match_count": 2,
+      "valid_sql_rate": 0.5304878048780488,
+      "execution_accuracy": 0.2682926829268293,
+      "exact_string_match_rate": 0.012195121951219513
+    }
+  }
+}
