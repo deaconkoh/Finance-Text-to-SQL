@@ -1,0 +1,704 @@
+{
+  "chart_of_accounts": {
+    "id": {
+      "description": "Primary key for each chart of accounts record.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Primary key identifier. No financial meaning."
+    },
+    "businessID": {
+      "description": "Unique identifier for the business associated with this chart of accounts record.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Foreign key identifier. No financial meaning."
+    },
+    "Account_name": {
+      "description": "The name of the account as it appears in the chart of accounts.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "account",
+      "annotation_note": "Text label identifying an account. Not a measure. Used in D1 checks to confirm SQL is operating on an account-scoped entity."
+    },
+    "Account_type": {
+      "description": "The IFRS element category of the account (e.g. asset, liability, equity, income, expense).",
+      "statement_family": "none",
+      "account_type": "classifier",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "account",
+      "annotation_note": "Stores an IFRS account type label as text. This is the classifier column — it contains values like asset, liability, income, expense. Critical for D1 checks: when intent expects income-class, this column should be filtered to income. Confusing this with product_service filtering is a D1 violation."
+    }
+  },
+
+  "customers": {
+    "id": {
+      "description": "Primary key for each customer record.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Primary key identifier. No financial meaning."
+    },
+    "businessID": {
+      "description": "Identifier linking the customer to a business.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Foreign key identifier. No financial meaning."
+    },
+    "customer_name": {
+      "description": "Short name or alias of the customer.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "customer",
+      "annotation_note": "Text identifier. Used for entity filtering. Not a measure."
+    },
+    "customer_full_name": {
+      "description": "Full legal name of the customer.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "customer",
+      "annotation_note": "Text identifier. Not a measure."
+    },
+    "Billing_address": {
+      "description": "Billing street address of the customer.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "customer",
+      "annotation_note": "Address field. No financial meaning."
+    },
+    "Billing_city": {
+      "description": "Billing city of the customer.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "customer",
+      "annotation_note": "Address field. No financial meaning."
+    },
+    "Billing_state": {
+      "description": "Billing state of the customer.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "customer",
+      "annotation_note": "Address field. No financial meaning."
+    },
+    "Billing_ZIP_code": {
+      "description": "Billing ZIP code of the customer.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "customer",
+      "annotation_note": "Postal code stored as integer. Not a financial measure."
+    },
+    "Shipping_address": {
+      "description": "Shipping street address of the customer.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "customer",
+      "annotation_note": "Address field. No financial meaning."
+    },
+    "Shipping_city": {
+      "description": "Shipping city of the customer.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "customer",
+      "annotation_note": "Address field. No financial meaning."
+    },
+    "Shipping_state": {
+      "description": "Shipping state of the customer.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "customer",
+      "annotation_note": "Address field. No financial meaning."
+    },
+    "Shipping_ZIP_code": {
+      "description": "Shipping ZIP code of the customer.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "customer",
+      "annotation_note": "Postal code stored as integer. Not a financial measure."
+    },
+    "Balance": {
+      "description": "Outstanding accounts receivable balance owed by this customer.",
+      "statement_family": "balance_sheet",
+      "account_type": "asset",
+      "measure_type": "stock",
+      "sign_convention": "debit_normal",
+      "unit": "monetary",
+      "temporal_grain": "point_in_time",
+      "entity_scope": "customer",
+      "annotation_note": "AR balance per customer. Assets are debit-normal. Stock measure — represents an amount owed at a point in time, not accumulated over a period. A question asking for customer balance should use this column, not transaction Amount or Credit. Using SUM(Credit) instead of this column is a D2 violation."
+    }
+  },
+
+  "employees": {
+    "id": {
+      "description": "Primary key for each employee record.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Primary key. No financial meaning."
+    },
+    "businessID": {
+      "description": "Identifier linking the employee to a business.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Foreign key. No financial meaning."
+    },
+    "Employee_name": {
+      "description": "Full name of the employee.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Text identifier. Not a financial measure."
+    },
+    "Employee_ID": {
+      "description": "Internal employee identifier code.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Identifier. No financial meaning."
+    },
+    "Hire_date": {
+      "description": "The date the employee was hired.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "date_field",
+      "entity_scope": "none",
+      "annotation_note": "Date field. Not a financial measure."
+    },
+    "Billing_rate": {
+      "description": "The hourly or unit billing rate associated with this employee.",
+      "statement_family": "income_statement",
+      "account_type": "expense",
+      "measure_type": "flow",
+      "sign_convention": "debit_normal",
+      "unit": "monetary",
+      "temporal_grain": "transaction_level",
+      "entity_scope": "none",
+      "annotation_note": "Rate applied per unit of work. Treated as a cost/expense-side value. Debit-normal as expenses increase on the debit side. Not the same as total billed amount — it is the rate per unit, not a cumulative measure."
+    },
+    "Deleted": {
+      "description": "Flag indicating whether the employee record has been soft-deleted.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Boolean-style flag stored as text. No financial meaning."
+    }
+  },
+
+  "master_txn_table": {
+    "id": {
+      "description": "Primary key for each transaction line record.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Primary key. No financial meaning."
+    },
+    "businessID": {
+      "description": "Identifier linking the transaction to a business.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Foreign key. No financial meaning."
+    },
+    "Transaction_ID": {
+      "description": "Identifier grouping transaction lines that belong to the same transaction.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "transaction",
+      "annotation_note": "Groups rows into a single transaction. Not a measure."
+    },
+    "Transaction_DATE": {
+      "description": "The date on which the transaction occurred.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "date_field",
+      "entity_scope": "transaction",
+      "annotation_note": "Primary date field used for period filtering. Critical for D3 temporal scope checks. A question asking for monthly revenue should filter this column to the correct month range."
+    },
+    "Transaction_TYPE": {
+      "description": "The type of financial transaction (e.g. Invoice, Expense, Bill, Payment).",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "transaction",
+      "annotation_note": "Categorical classifier for transaction kind. Used in D1 checks — a question about invoices should filter this to Invoice, not filter Product_Service. Confusing this with account-type filtering is a common D1 violation in BookSQL."
+    },
+    "Amount": {
+      "description": "Gross transaction amount without directional sign convention.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "flow",
+      "sign_convention": "none",
+      "unit": "monetary",
+      "temporal_grain": "transaction_level",
+      "entity_scope": "transaction",
+      "annotation_note": "AMBIGUOUS — sign_convention is none because Amount does not distinguish credit-side from debit-side values. It is the most common source of D2 violations: a question asking for invoice value (credit-normal) should use Credit, not Amount. Using Amount where Credit is required is a financial measure error."
+    },
+    "CreatedDATE": {
+      "description": "The system date when the transaction record was created.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "date_field",
+      "entity_scope": "transaction",
+      "annotation_note": "System creation timestamp, not the transaction date. Should not be used for financial period filtering. Using this instead of Transaction_DATE is a D3 temporal scope error."
+    },
+    "CreatedUSER": {
+      "description": "The user who created the transaction record.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Audit field. No financial meaning."
+    },
+    "Account": {
+      "description": "The account name this transaction line is posted to.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "account",
+      "annotation_note": "Text reference to the account name. Used in D1 checks — questions about account-level aggregation should filter on this column, not on Product_Service. Confusing the two is a D1 entity_scope violation."
+    },
+    "AR_paid": {
+      "description": "Flag indicating whether the accounts receivable for this transaction has been paid.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "transaction",
+      "annotation_note": "Boolean-style status flag. Useful for filtering outstanding vs paid AR. Not a monetary measure."
+    },
+    "AP_paid": {
+      "description": "Flag indicating whether the accounts payable for this transaction has been paid.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "transaction",
+      "annotation_note": "Boolean-style status flag. Useful for filtering outstanding vs paid AP. Not a monetary measure."
+    },
+    "Due_DATE": {
+      "description": "The payment due date for this transaction.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "date_field",
+      "entity_scope": "transaction",
+      "annotation_note": "Date field for payment due dates. Distinct from Transaction_DATE. Should not be used as a proxy for transaction period."
+    },
+    "Open_balance": {
+      "description": "The remaining unpaid balance on this transaction at the time of recording.",
+      "statement_family": "balance_sheet",
+      "account_type": "none",
+      "measure_type": "stock",
+      "sign_convention": "none",
+      "unit": "monetary",
+      "temporal_grain": "point_in_time",
+      "entity_scope": "transaction",
+      "annotation_note": "Outstanding balance per transaction line. Stock measure — represents what is still owed at a point in time, not a period flow. account_type is intentionally none — this column appears on both AR transactions (asset, debit-normal) and AP transactions (liability, credit-normal) depending on context. The financial class of this balance must be inferred from Transaction_TYPE, Customers, or Vendor columns, not from this column alone. D2 violation: using SUM(Amount) or SUM(Credit) instead of this column for questions about outstanding balances."
+    },
+    "Customers": {
+      "description": "The customer name associated with this transaction.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "customer",
+      "annotation_note": "Text reference to customer. Used for customer-level filtering."
+    },
+    "Vendor": {
+      "description": "The vendor name associated with this transaction.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "vendor",
+      "annotation_note": "Text reference to vendor. Used for vendor-level filtering."
+    },
+    "Product_Service": {
+      "description": "The product or service line item associated with this transaction.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "product_service",
+      "annotation_note": "Text reference to a product or service. entity_scope is product_service, NOT account. A question about account categories (e.g. income, expense) should NOT filter on this column. Filtering on Product_Service when the question asks about an account category is a D1 entity_scope violation — the most common D1 error in BookSQL."
+    },
+    "Quantity": {
+      "description": "The number of units for the product or service on this transaction line.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "flow",
+      "sign_convention": "none",
+      "unit": "count",
+      "temporal_grain": "transaction_level",
+      "entity_scope": "transaction",
+      "annotation_note": "Integer count of units. Not a monetary value. Should not be summed in place of monetary amounts."
+    },
+    "Rate": {
+      "description": "The unit price or rate applied to the product or service on this transaction line.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "flow",
+      "sign_convention": "none",
+      "unit": "monetary",
+      "temporal_grain": "transaction_level",
+      "entity_scope": "transaction",
+      "annotation_note": "Per-unit price. Not the total line value. Total = Quantity x Rate. Should not be summed directly to get revenue — that ignores quantity."
+    },
+    "Credit": {
+      "description": "The credit-side monetary value of this transaction line.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "flow",
+      "sign_convention": "credit_normal",
+      "unit": "monetary",
+      "temporal_grain": "transaction_level",
+      "entity_scope": "transaction",
+      "annotation_note": "Credit-side monetary value. sign_convention: credit_normal is the key attribute for D2 checks. account_type is intentionally none — credit entries can relate to income, liability, or equity depending on the account being posted to. The account classification comes from the Account column and chart_of_accounts.Account_type, not from this column. D2 violation: using Amount (sign_convention: none) instead of Credit when the question requires a credit-normal measure such as invoice value or revenue."
+    },
+    "Debit": {
+      "description": "The debit-side monetary value of this transaction line.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "flow",
+      "sign_convention": "debit_normal",
+      "unit": "monetary",
+      "temporal_grain": "transaction_level",
+      "entity_scope": "transaction",
+      "annotation_note": "Debit-side monetary value. sign_convention: debit_normal is the key attribute for D2 checks. account_type is intentionally none — debit entries can increase assets or expenses depending on the account being posted to. The account classification comes from the Account column and chart_of_accounts.Account_type, not from this column. D2 violation: using Amount or Credit instead of Debit when the question requires a debit-normal measure such as total expenses or costs paid."
+    },
+    "payment_method": {
+      "description": "The payment method used for this transaction (e.g. cash, cheque, credit card).",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "transaction",
+      "annotation_note": "Categorical label. Used for filtering by payment type. Not a measure."
+    },
+    "Misc": {
+      "description": "Miscellaneous notes or metadata associated with the transaction.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Free-text field. No financial meaning."
+    }
+  },
+
+  "payment_method": {
+    "id": {
+      "description": "Primary key for each payment method record.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Primary key. No financial meaning."
+    },
+    "businessID": {
+      "description": "Identifier linking the payment method to a business.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Foreign key. No financial meaning."
+    },
+    "Payment_method": {
+      "description": "Name or label of the payment method (e.g. Cash, Bank Transfer).",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Text label. No financial meaning beyond filtering."
+    },
+    "Credit_card": {
+      "description": "Flag or name indicating whether this payment method is a credit card.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Text flag — NOT a financial credit column. Do not confuse with master_txn_table.Credit. sign_convention is none."
+    }
+  },
+
+  "products": {
+    "id": {
+      "description": "Primary key for each product or service record.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Primary key. No financial meaning."
+    },
+    "businessID": {
+      "description": "Identifier linking the product to a business.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Foreign key. No financial meaning."
+    },
+    "Product_Service": {
+      "description": "Name of the product or service.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "product_service",
+      "annotation_note": "Product or service name. entity_scope is product_service. This is frequently confused with account-level filtering in D1 violations."
+    },
+    "Product_Service_type": {
+      "description": "The category or type of the product or service.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "product_service",
+      "annotation_note": "Categorical type label for product classification. Not an IFRS account type."
+    }
+  },
+
+  "vendors": {
+    "id": {
+      "description": "Primary key for each vendor record.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Primary key. No financial meaning."
+    },
+    "businessID": {
+      "description": "Identifier linking the vendor to a business.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "none",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "none",
+      "annotation_note": "Foreign key. No financial meaning."
+    },
+    "Vendor_name": {
+      "description": "Name of the vendor.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "vendor",
+      "annotation_note": "Text identifier. Used for vendor-level filtering."
+    },
+    "Billing_address": {
+      "description": "Billing street address of the vendor.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "vendor",
+      "annotation_note": "Address field. No financial meaning."
+    },
+    "Billing_city": {
+      "description": "Billing city of the vendor.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "vendor",
+      "annotation_note": "Address field. No financial meaning."
+    },
+    "Billing_state": {
+      "description": "Billing state of the vendor.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "vendor",
+      "annotation_note": "Address field. No financial meaning."
+    },
+    "Billing_ZIP_code": {
+      "description": "Billing ZIP code of the vendor.",
+      "statement_family": "none",
+      "account_type": "none",
+      "measure_type": "categorical",
+      "sign_convention": "none",
+      "unit": "none",
+      "temporal_grain": "none",
+      "entity_scope": "vendor",
+      "annotation_note": "Postal code stored as integer. Not a financial measure."
+    },
+    "Balance": {
+      "description": "Outstanding accounts payable balance owed to this vendor.",
+      "statement_family": "balance_sheet",
+      "account_type": "liability",
+      "measure_type": "stock",
+      "sign_convention": "credit_normal",
+      "unit": "monetary",
+      "temporal_grain": "point_in_time",
+      "entity_scope": "vendor",
+      "annotation_note": "AP balance per vendor. Liabilities are credit-normal — they increase on the credit side. Stock measure — represents what is owed at a point in time. A question about outstanding vendor payables should use this column. Contrast with customers.Balance which is an asset (debit-normal AR). Confusing the two is a D1 account_type violation."
+    }
+  }
+}

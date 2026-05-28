@@ -1,0 +1,283 @@
+question_id,db_id,generator,prompt_setting,split,level,question,generated_sql,gold_sql,generated_result,gold_result,generated_execution_status,gold_execution_status,execution_match,evaluation_group,ambiguity_flags,excluded_from_primary_metrics,primary_error_label,secondary_error_label,error_sublabel,annotation_note
+booksql_071174,booksql,qwen,zero_shot,validation,medium,Did we receive payment from Cameron Abbott partnership This year?,"SELECT EXISTS (
+    SELECT 1
+    FROM master_txn_table
+    JOIN customers ON master_txn_table.Customers = customers.customer_name
+    WHERE customers.customer_name = 'Cameron Abbott Partnership'
+      AND master_txn_table.Transaction_DATE >= DATE('now','-1 year')
+      AND master_txn_table.AR_paid = 'Yes'
+);","select transaction_id from master_txn_table where transaction_type = 'payment' and customers = ""Cameron Abbott"" and transaction_date BETWEEN date(current_date, 'start of year') AND date(current_date) ","{""row_count"": 1, ""truncated"": false, ""rows"": [[0]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty""]",False,,,,
+booksql_077097,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Jessica Baker,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN customers ON master_txn_table.Customers = customers.customer_name
+WHERE customers.customer_full_name = 'Jessica Baker'
+AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Jessica Baker"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_076283,booksql,qwen,zero_shot,validation,medium,Did we receive payment from Joseph Moreno partnership in q3 last year?,"SELECT EXISTS (
+    SELECT 1
+    FROM master_txn_table
+    JOIN customers ON master_txn_table.Customers = customers.customer_name
+    WHERE customers.customer_full_name = 'Joseph Moreno partnership'
+      AND master_txn_table.Transaction_DATE BETWEEN '2022-07-01' AND '2022-09-30'
+      AND master_txn_table.AR_paid = 'Yes'
+);","select transaction_id from master_txn_table where transaction_type = 'payment' and customers = ""Joseph Moreno"" and transaction_date BETWEEN date(current_date, '-1 year', 'start of year', '+6 month') AND date(current_date, '-1 year', 'start of year', '+9 month', '-1 day') ","{""row_count"": 1, ""truncated"": false, ""rows"": [[0]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty""]",False,,,,
+booksql_074412,booksql,qwen,zero_shot,validation,hard,What acount had our biggest expense in q2 this year?,"SELECT chart_of_accounts.Account_name, SUM(master_txn_table.Amount) AS Total_Expense
+FROM master_txn_table
+JOIN chart_of_accounts ON master_txn_table.Account = chart_of_accounts.Account_name
+WHERE master_txn_table.Transaction_DATE BETWEEN '2023-04-01' AND '2023-06-30'
+GROUP BY chart_of_accounts.Account_name
+ORDER BY Total_Expense DESC
+LIMIT 1;","select account, sum(debit) from master_txn_table as T1 join chart_of_accounts as T2 on T1.account = T2.account_name  where account_type in ('Expense','Other Expense') and transaction_date BETWEEN date(current_date, 'start of year','+3 month') AND date(current_date, 'start of year', '+6 month', '-1 day') group by account order by sum(debit) desc limit 1","{""row_count"": 1, ""truncated"": false, ""rows"": [[""accounts receivable (a/r)"", 344503910.7]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty""]",False,,,,
+booksql_076552,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Justin Wilson,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN employees ON master_txn_table.businessID = employees.businessID
+WHERE employees.Employee_name = 'Justin Wilson' AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Justin Wilson"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_073337,booksql,qwen,zero_shot,validation,hard,When was the last time we sold Service Provider,"SELECT MAX(Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+WHERE Product_Service = 'Service Provider';","select transaction_date from master_txn_table  as T1 join chart_of_accounts as T2 on T1.account = T2.account_name where account_type in ('Income','Other Income') and product_service = ""Service Provider"" order by transaction_date desc limit 1 ","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_074772,booksql,qwen,zero_shot,validation,medium,Did we receive payment from Seth West partnership in dec last year?,"SELECT EXISTS (
+    SELECT 1
+    FROM master_txn_table
+    JOIN customers ON master_txn_table.Customers = customers.customer_name
+    WHERE customers.customer_full_name = 'Seth West partnership'
+      AND master_txn_table.Transaction_DATE BETWEEN '2022-12-01' AND '2022-12-31'
+      AND master_txn_table.AR_paid = 'Yes'
+);","select transaction_id from master_txn_table where transaction_type = 'payment' and customers = ""Seth West"" and transaction_date BETWEEN date(current_date, '-1 year', 'start of year', '+11 month') AND date(current_date, '-1 year', 'start of year', '+12 month', '-1 day') ","{""row_count"": 1, ""truncated"": false, ""rows"": [[0]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty""]",False,,,,
+booksql_075297,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Anna Simmons,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN customers ON master_txn_table.Customers = customers.customer_name
+WHERE customers.customer_full_name = 'Anna Simmons'
+AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Anna Simmons"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_071537,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Stacey Lopez,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN employees ON master_txn_table.businessID = employees.businessID
+WHERE employees.Employee_name = 'Stacey Lopez' AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Stacey Lopez"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_075618,booksql,qwen,zero_shot,validation,medium,How many Quality assessment did we sell to Jessica Smith This year to date?,"SELECT COUNT(*) 
+FROM master_txn_table 
+JOIN customers ON master_txn_table.Customers = customers.customer_name 
+WHERE customers.customer_full_name = 'Jessica Smith' 
+  AND master_txn_table.Product_Service = 'Quality assessment' 
+  AND master_txn_table.Transaction_DATE >= DATE('now','-1 year');","select sum(quantity) from master_txn_table where customers = ""Jessica Smith"" and product_service = 'Quality assessment' and transaction_type in ('invoice', 'sales receipt') and transaction_date BETWEEN date(current_date, 'start of year') AND date(current_date) ","{""row_count"": 1, ""truncated"": false, ""rows"": [[0]]}","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}",success,success,False,B_wrong_executable,"[""gold_result_all_null""]",False,,,,
+booksql_074265,booksql,qwen,zero_shot,validation,hard,When was the last time we sold Computer Programming,"SELECT MAX(master_txn_table.Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+JOIN products ON master_txn_table.Product_Service = products.Product_Service
+WHERE products.Product_Service = 'Computer Programming';","select transaction_date from master_txn_table  as T1 join chart_of_accounts as T2 on T1.account = T2.account_name where account_type in ('Income','Other Income') and product_service = ""Computer Programming"" order by transaction_date desc limit 1 ","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_075825,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Jasmine Parrish,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN customers ON master_txn_table.Customers = customers.customer_name
+WHERE customers.customer_full_name = 'Jasmine Parrish'
+AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-12-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Jasmine Parrish"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_077201,booksql,qwen,zero_shot,validation,medium,Did we receive payment from Jennifer Morris partnership This fiscal year?,"SELECT EXISTS (
+    SELECT 1
+    FROM master_txn_table
+    JOIN customers ON master_txn_table.Customers = customers.customer_name
+    WHERE customers.customer_full_name = 'Jennifer Morris Partnership'
+      AND master_txn_table.Transaction_DATE >= DATE('now','-1 year')
+      AND master_txn_table.AR_paid = 'Yes'
+);","select transaction_id from master_txn_table where transaction_type = 'payment' and customers = ""Jennifer Morris"" and transaction_date BETWEEN date(current_date, '-3 months', 'start of year', '+3 months') AND date(current_date) ","{""row_count"": 1, ""truncated"": false, ""rows"": [[0]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty""]",False,,,,
+booksql_075651,booksql,qwen,zero_shot,validation,medium,Did we receive payment from Stephen Harris partnership today?,"SELECT 
+    CASE 
+        WHEN EXISTS (
+            SELECT 1 
+            FROM master_txn_table 
+            JOIN customers ON master_txn_table.Customers = customers.customer_name 
+            WHERE customers.customer_full_name = 'Stephen Harris Partnership' 
+              AND master_txn_table.Transaction_DATE = CURRENT_DATE 
+              AND master_txn_table.AR_paid = 'Yes'
+        ) THEN 'Yes' 
+        ELSE 'No' 
+    END AS received_payment","select transaction_id from master_txn_table where transaction_type = 'payment' and customers = ""Stephen Harris"" and transaction_date BETWEEN date(current_date) AND date(current_date) ","{""row_count"": 1, ""truncated"": false, ""rows"": [[""No""]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty""]",False,,,,
+booksql_078048,booksql,qwen,zero_shot,validation,medium,What was the last bill Samuel Cross received from Dale Hudson?,"SELECT mt.Transaction_DATE, mt.Amount
+FROM master_txn_table mt
+JOIN customers c ON mt.Customers = c.customer_name
+JOIN employees e ON mt.businessID = e.businessID
+WHERE c.customer_full_name = 'Samuel Cross' AND e.Employee_name = 'Dale Hudson'
+ORDER BY mt.Transaction_DATE DESC
+LIMIT 1;","select max(credit) from master_txn_table where customers = ""Samuel Cross"" and transaction_type = 'bill' and vendor = ""Dale Hudson""","{""row_count"": 0, ""truncated"": false, ""rows"": []}","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}",success,success,False,B_wrong_executable,"[""generated_result_empty"", ""gold_result_all_null""]",False,,,,
+booksql_075253,booksql,qwen,zero_shot,validation,medium,How many Service Provisioning did we sell to James Wood Last year?,"SELECT COUNT(*) 
+FROM master_txn_table 
+JOIN customers ON master_txn_table.Customers = customers.customer_name 
+WHERE customers.customer_full_name = 'James Wood' 
+  AND master_txn_table.Transaction_TYPE = 'Service Provisioning' 
+  AND master_txn_table.Transaction_DATE BETWEEN DATE('now','-1 year') AND DATE('now');","select sum(quantity) from master_txn_table where customers = ""James Wood"" and product_service = 'Service Provisioning' and transaction_type in ('invoice', 'sales receipt') and transaction_date BETWEEN date(current_date,  'start of year', '-1 days', 'start of year') AND date(current_date,  'start of year', '-1 days') ","{""row_count"": 1, ""truncated"": false, ""rows"": [[0]]}","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}",success,success,False,B_wrong_executable,"[""gold_result_all_null""]",False,,,,
+booksql_076334,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Susan Mooney,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN employees ON master_txn_table.businessID = employees.businessID
+WHERE employees.Employee_name = 'Susan Mooney' AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Susan Mooney"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_073894,booksql,qwen,zero_shot,validation,hard,When was the last time we sold Cementing walls,"SELECT MAX(master_txn_table.Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+JOIN products ON master_txn_table.Product_Service = products.Product_Service
+WHERE products.Product_Service = 'Cementing walls';","select transaction_date from master_txn_table  as T1 join chart_of_accounts as T2 on T1.account = T2.account_name where account_type in ('Income','Other Income') and product_service = ""Cementing walls"" order by transaction_date desc limit 1 ","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_073920,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Jennifer Walker,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN customers ON master_txn_table.Customers = customers.customer_name
+WHERE customers.customer_full_name = 'Jennifer Walker'
+AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Jennifer Walker"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_076013,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Erik Carter,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN employees ON master_txn_table.businessID = employees.businessID
+WHERE employees.Employee_name = 'Erik Carter' AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Erik Carter"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_073327,booksql,qwen,zero_shot,validation,medium,How many Saddlery did we sell to Christine Fitzgerald in aug this year?,"SELECT COUNT(*) 
+FROM master_txn_table 
+JOIN customers ON master_txn_table.Customers = customers.customer_name 
+WHERE customers.customer_full_name = 'Christine Fitzgerald' 
+  AND master_txn_table.Product_Service = 'Saddlery' 
+  AND master_txn_table.Transaction_DATE BETWEEN '2023-08-01' AND '2023-08-31';","select sum(quantity) from master_txn_table where customers = ""Christine Fitzgerald"" and product_service = 'Saddlery' and transaction_type in ('invoice', 'sales receipt') and transaction_date BETWEEN date(current_date, 'start of year', '+7 month') AND date(current_date, 'start of year', '+8 month', '-1 day') ","{""row_count"": 1, ""truncated"": false, ""rows"": [[0]]}","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}",success,success,False,B_wrong_executable,"[""gold_result_all_null""]",False,,,,
+booksql_072379,booksql,qwen,zero_shot,validation,hard,When was the last time we sold Boat,"SELECT MAX(master_txn_table.Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+JOIN products ON master_txn_table.Product_Service = products.Product_Service
+WHERE products.Product_Service = 'Boat';","select transaction_date from master_txn_table  as T1 join chart_of_accounts as T2 on T1.account = T2.account_name where account_type in ('Income','Other Income') and product_service = ""Boat"" order by transaction_date desc limit 1 ","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_074221,booksql,qwen,zero_shot,validation,medium,Did we receive payment from Joshua Wilson partnership This fiscal year to date?,"SELECT EXISTS (
+    SELECT 1
+    FROM master_txn_table
+    JOIN customers ON master_txn_table.Customers = customers.customer_name
+    WHERE customers.customer_full_name = 'Joshua Wilson Partnership'
+      AND master_txn_table.Transaction_DATE >= DATE('now','-1 year')
+      AND master_txn_table.AR_paid = 'Yes'
+);","select transaction_id from master_txn_table where transaction_type = 'payment' and customers = ""Joshua Wilson"" and transaction_date BETWEEN date(current_date, '-3 months', 'start of year', '+3 months') AND date(current_date, '-3 months', 'start of year','+1 year', '+3 months', '-1 day') ","{""row_count"": 1, ""truncated"": false, ""rows"": [[0]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty""]",False,,,,
+booksql_075224,booksql,qwen,zero_shot,validation,medium,How many Memberships did we sell to Leah Bartlett This quarter?,"SELECT COUNT(*) 
+FROM master_txn_table 
+JOIN customers ON master_txn_table.Customers = customers.customer_name 
+WHERE customers.customer_full_name = 'Leah Bartlett' 
+  AND master_txn_table.Product_Service = 'Membership' 
+  AND master_txn_table.Transaction_DATE BETWEEN DATE('now','-3 months') AND DATE('now');","select sum(quantity) from master_txn_table where customers = ""Leah Bartlett"" and product_service = 'Memberships' and transaction_type in ('invoice', 'sales receipt') and transaction_date >= strftime('%Y-%m-%d', strftime('%Y', 'now', '-1 year') || '-' || substr('00' || (((strftime('%m', 'now') - 1) / 3) * 3 + 1), -2, 2) || '-01') ","{""row_count"": 1, ""truncated"": false, ""rows"": [[0]]}","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}",success,success,False,B_wrong_executable,"[""gold_result_all_null""]",False,,,,
+booksql_070977,booksql,qwen,zero_shot,validation,hard,When was the last time we sold Saddlery,"SELECT MAX(master_txn_table.Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+JOIN products ON master_txn_table.Product_Service = products.Product_Service
+WHERE products.Product_Service = 'Saddlery';","select transaction_date from master_txn_table  as T1 join chart_of_accounts as T2 on T1.account = T2.account_name where account_type in ('Income','Other Income') and product_service = ""Saddlery"" order by transaction_date desc limit 1 ","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_073886,booksql,qwen,zero_shot,validation,hard,When was the last time we sold Golf Instructions,"SELECT MAX(master_txn_table.Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+JOIN products ON master_txn_table.Product_Service = products.Product_Service
+WHERE products.Product_Service = 'Golf Instructions';","select transaction_date from master_txn_table  as T1 join chart_of_accounts as T2 on T1.account = T2.account_name where account_type in ('Income','Other Income') and product_service = ""Golf Instructions"" order by transaction_date desc limit 1 ","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_075054,booksql,qwen,zero_shot,validation,hard,When was the last time we sold Athletic uniforms,"SELECT MAX(Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+WHERE Product_Service = 'Athletic uniforms';","select transaction_date from master_txn_table  as T1 join chart_of_accounts as T2 on T1.account = T2.account_name where account_type in ('Income','Other Income') and product_service = ""Athletic uniforms"" order by transaction_date desc limit 1 ","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_077369,booksql,qwen,zero_shot,validation,medium,How many License fees did we sell to Kevin Jones This quarter?,"SELECT COUNT(*) 
+FROM master_txn_table 
+JOIN customers ON master_txn_table.Customers = customers.customer_name 
+WHERE customers.customer_full_name = 'Kevin Jones' 
+AND master_txn_table.Product_Service = 'License fees' 
+AND master_txn_table.Transaction_DATE BETWEEN DATE('now','-3 months') AND DATE('now');","select sum(quantity) from master_txn_table where customers = ""Kevin Jones"" and product_service = 'License fees' and transaction_type in ('invoice', 'sales receipt') and transaction_date >= strftime('%Y-%m-%d', strftime('%Y', 'now', '-1 year') || '-' || substr('00' || (((strftime('%m', 'now') - 1) / 3) * 3 + 1), -2, 2) || '-01') ","{""row_count"": 1, ""truncated"": false, ""rows"": [[0]]}","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}",success,success,False,B_wrong_executable,"[""gold_result_all_null""]",False,,,,
+booksql_072399,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Kristi Ellis,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN employees ON master_txn_table.businessID = employees.businessID
+WHERE employees.Employee_name = 'Kristi Ellis' AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Kristi Ellis"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_075170,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Sarah Foster,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN employees ON master_txn_table.businessID = employees.businessID
+JOIN customers ON master_txn_table.businessID = customers.businessID
+WHERE employees.Employee_name = 'Sarah Foster' AND customers.customer_name = 'Sarah Foster' AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Sarah Foster"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_073909,booksql,qwen,zero_shot,validation,medium,How many Fluorocarbon gases did we sell to Jesse Pacheco in aug this year?,"SELECT COUNT(*) 
+FROM master_txn_table 
+JOIN customers ON master_txn_table.Customers = customers.customer_name 
+JOIN products ON master_txn_table.Product_Service = products.Product_Service 
+WHERE customers.customer_full_name = 'Jesse Pacheco' 
+  AND products.Product_Service_type = 'Fluorocarbon gases' 
+  AND master_txn_table.Transaction_DATE BETWEEN '2023-08-01' AND '2023-08-31';","select sum(quantity) from master_txn_table where customers = ""Jesse Pacheco"" and product_service = 'Fluorocarbon gases' and transaction_type in ('invoice', 'sales receipt') and transaction_date BETWEEN date(current_date, 'start of year', '+7 month') AND date(current_date, 'start of year', '+8 month', '-1 day') ","{""row_count"": 1, ""truncated"": false, ""rows"": [[0]]}","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}",success,success,False,B_wrong_executable,"[""gold_result_all_null""]",False,,,,
+booksql_074141,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Audrey Green,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN customers ON master_txn_table.Customers = customers.customer_name
+WHERE customers.customer_full_name = 'Audrey Green'
+AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-12-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Audrey Green"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_073988,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Brandon Reid,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN employees ON master_txn_table.businessID = employees.businessID
+WHERE employees.Employee_name = 'Brandon Reid' AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Brandon Reid"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_074697,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Jasmine Watson,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN customers ON master_txn_table.Customers = customers.customer_name
+WHERE customers.customer_full_name = 'Jasmine Watson'
+AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-12-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Jasmine Watson"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_076426,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Amy Holland,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN employees ON master_txn_table.businessID = employees.businessID
+WHERE employees.Employee_name = 'Amy Holland' AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Amy Holland"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_076429,booksql,qwen,zero_shot,validation,hard,When was the last time we sold Youth community,"SELECT MAX(master_txn_table.Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+JOIN products ON master_txn_table.Product_Service = products.Product_Service
+WHERE products.Product_Service = 'Youth community';","select transaction_date from master_txn_table  as T1 join chart_of_accounts as T2 on T1.account = T2.account_name where account_type in ('Income','Other Income') and product_service = ""Youth community"" order by transaction_date desc limit 1 ","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_071891,booksql,qwen,zero_shot,validation,hard,When was the last time we sold Mobile Device,"SELECT MAX(master_txn_table.Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+JOIN products ON master_txn_table.Product_Service = products.Product_Service
+WHERE products.Product_Service = 'Mobile Device';","select transaction_date from master_txn_table  as T1 join chart_of_accounts as T2 on T1.account = T2.account_name where account_type in ('Income','Other Income') and product_service = ""Mobile Device"" order by transaction_date desc limit 1 ","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_071798,booksql,qwen,zero_shot,validation,medium,Did we receive payment from John Jones partnership in q1 this year?,"SELECT EXISTS (
+    SELECT 1
+    FROM master_txn_table
+    JOIN customers ON master_txn_table.Customers = customers.customer_name
+    WHERE customers.customer_full_name = 'John Jones partnership'
+      AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-03-31'
+      AND master_txn_table.AR_paid = 'Yes'
+);","select transaction_id from master_txn_table where transaction_type = 'payment' and customers = ""John Jones"" and transaction_date BETWEEN date(current_date, 'start of year') AND date(current_date, 'start of year', '+3 month', '-1 day') ","{""row_count"": 1, ""truncated"": false, ""rows"": [[0]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty""]",False,,,,
+booksql_071532,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Natalie Browning,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN customers ON master_txn_table.Customers = customers.customer_name
+WHERE customers.customer_full_name = 'Natalie Browning'
+AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-12-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Natalie Browning"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_075228,booksql,qwen,zero_shot,validation,medium,What was the first bill Charles Miranda received from Stephen Fitzgerald?,"SELECT mt.Transaction_DATE, mt.Amount
+FROM master_txn_table mt
+JOIN customers c ON mt.Customers = c.customer_name
+JOIN employees e ON mt.businessID = e.businessID
+WHERE c.customer_full_name = 'Stephen Fitzgerald' AND e.Employee_name = 'Charles Miranda'
+ORDER BY mt.Transaction_DATE ASC
+LIMIT 1;","select min(credit) from master_txn_table where customers = ""Charles Miranda"" and transaction_type = 'bill' and vendor = ""Stephen Fitzgerald""","{""row_count"": 0, ""truncated"": false, ""rows"": []}","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}",success,success,False,B_wrong_executable,"[""generated_result_empty"", ""gold_result_all_null""]",False,,,,
+booksql_076980,booksql,qwen,zero_shot,validation,medium,What was the first bill Jennifer Evans received from Andrea Allison?,"SELECT mt.Transaction_DATE, mt.Amount
+FROM master_txn_table mt
+JOIN customers c ON mt.Customers = c.customer_name
+JOIN employees e ON mt.businessID = e.businessID
+WHERE c.customer_full_name = 'Jennifer Evans' AND e.Employee_name = 'Andrea Allison'
+ORDER BY mt.Transaction_DATE ASC
+LIMIT 1;","select min(credit) from master_txn_table where customers = ""Jennifer Evans"" and transaction_type = 'bill' and vendor = ""Andrea Allison""","{""row_count"": 0, ""truncated"": false, ""rows"": []}","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}",success,success,False,B_wrong_executable,"[""generated_result_empty"", ""gold_result_all_null""]",False,,,,
+booksql_073746,booksql,qwen,zero_shot,validation,hard,What acount had our biggest expense in q3 last year?,"SELECT chart_of_accounts.Account_name, SUM(master_txn_table.Amount) AS Total_Expense
+FROM master_txn_table
+JOIN chart_of_accounts ON master_txn_table.Account = chart_of_accounts.Account_name
+WHERE master_txn_table.Transaction_DATE BETWEEN '2022-07-01' AND '2022-09-30'
+GROUP BY chart_of_accounts.Account_name
+ORDER BY Total_Expense DESC
+LIMIT 1;","select account, sum(debit) from master_txn_table as T1 join chart_of_accounts as T2 on T1.account = T2.account_name  where account_type in ('Expense','Other Expense') and transaction_date BETWEEN date(current_date, '-1 year', 'start of year', '+6 month') AND date(current_date, '-1 year', 'start of year', '+9 month', '-1 day') group by account order by sum(debit) desc limit 1","{""row_count"": 1, ""truncated"": false, ""rows"": [[""accounts receivable (a/r)"", 1310192428.23]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty""]",False,,,,
+booksql_075596,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Brandy Gates,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN products ON master_txn_table.Product_Service = products.Product_Service
+WHERE products.Product_Service = 'Brandy Gates'
+AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-12-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Brandy Gates"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_074452,booksql,qwen,zero_shot,validation,hard,When was the last time we sold Peppermint oil,"SELECT MAX(master_txn_table.Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+JOIN products ON master_txn_table.Product_Service = products.Product_Service
+WHERE products.Product_Service = 'Peppermint oil';","select transaction_date from master_txn_table  as T1 join chart_of_accounts as T2 on T1.account = T2.account_name where account_type in ('Income','Other Income') and product_service = ""Peppermint oil"" order by transaction_date desc limit 1 ","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_072186,booksql,qwen,zero_shot,validation,hard,What our monthly spend on Sara Perez,"SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN employees ON master_txn_table.businessID = employees.businessID
+WHERE employees.Employee_name = 'Sara Perez' AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31';","select date(transaction_date, 'start of month'), sum(debit) from master_txn_table where vendor = ""Sara Perez"" group by date(transaction_date, 'start of month')","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_074738,booksql,qwen,zero_shot,validation,hard,Compare sales by customer in q3 last year,"SELECT 
+    c.customer_name, 
+    SUM(m.Amount) AS Total_Sales
+FROM 
+    master_txn_table m
+JOIN 
+    customers c ON m.Customers = c.customer_name
+WHERE 
+    m.Transaction_DATE BETWEEN '2022-07-01' AND '2022-09-30'
+GROUP BY 
+    c.customer_name
+ORDER BY 
+    Total_Sales DESC;","select customers, sum(credit) from master_txn_table where account in ('Income','Other Income') and transaction_date BETWEEN date(current_date, '-1 year', 'start of year', '+6 month') AND date(current_date, '-1 year', 'start of year', '+9 month', '-1 day')  group by customers ","{""row_count"": 1086, ""truncated"": true, ""rows"": [[""jeffrey smith"", 5010404.0], [""robert williams"", 4025562.1], [""michael allen"", 3401796.1999999997], [""michael brown"", 3269925.0], [""christopher brown"", 2999853.2], [""mark jones"", 2935006.65], [""david brown"", 2797254.9], [""jennifer moore"", 2608894.8000000003], [""james brown"", 2608894.8000000003], [""william miller"", 2542959.0], [""jennifer perry"", 2479769.7], [""daniel johnson"", 2300321.2], [""stephen thomas"", 2218220.4], [""matthew jones"", 2037791.35], [""jennifer davis"", 2034367.2], [""ashley smith"", 1906762.0], [""nicole smith"", 1780071.3], [""jason smith"", 1731278.25], [""michael williams"", 1722425.6500000001], [""ryan brown"", 1653179.8], [""monica smith"", 1653179.8], [""kimberly sanchez"", 1653179.8], [""courtney williams"", 1653179.8], [""christopher hernandez"", 1653179.8], [""joshua brown"", 1604446.35], [""jason campbell"", 1539385.8], [""ashley brown"", 1307970.0], [""ryan smith"", 1306173.26], [""michael cook"", 1304447.4000000001], [""michael hill"", 1304205.6], [""joshua perez"", 1239884.85], [""thomas martin"", 1237016.7999999998], [""jennifer garcia"", 1218517.5], [""sarah smith"", 1154817.0], [""john miller"", 1114775.4], [""robert miller"", 1098906.55], [""melissa clark"", 1089975.0], [""brian johnson"", 1076264.4000000001], [""ashley johnson"", 1065402.0], [""ashley davis"", 1049571.3], [""michael jones"", 1048665.0], [""robert lopez"", 1017183.6], [""linda scott"", 1017183.6], [""laura webb"", 1017183.6], [""kelly garcia"", 1012348.8], [""alicia jones"", 997928.4], [""amanda smith"", 978754.0], [""steven ortiz"", 978335.55], [""cynthia rodriguez"", 978335.55], [""david davis"", 972948.24], [""james king"", 927762.6], [""heather johnson"", 924303.78], [""daniel smith"", 906282.0], [""scott wilson"", 900470.25], [""michael rodriguez"", 898191.0], [""christopher campbell"", 880044.0], [""kevin anderson"", 878794.2000000001], [""susan moore"", 871980.0], [""paul brown"", 871980.0], [""john jackson"", 871980.0], [""zachary morales"", 826589.9], [""william stewart"", 826589.9], [""travis clark"", 826589.9], [""nathaniel hernandez"", 826589.9], [""lindsay smith"", 826589.9], [""jennifer edwards"", 826589.9], [""heather thompson"", 826589.9], [""christian jackson"", 826589.9], [""james hernandez"", 813291.5], [""stephanie thomas"", 782920.75], [""joshua thomas"", 769878.0], [""scott robinson"", 762887.7], [""rachel young"", 762887.7], [""mark foster"", 762887.7], [""richard simmons"", 759331.76], [""jennifer jones"", 756507.84], [""steven hall"", 735067.6], [""nicholas johnson"", 733370.0], [""ashley thompson"", 733370.0], [""james white"", 717509.6000000001], [""mark garcia"", 712029.51], [""kristen johnson"", 699714.2], [""andrea jones"", 699714.2], [""richard smith"", 697107.0], [""joshua young"", 653985.0], [""william brooks"", 652223.7000000001], [""joseph mckenzie"", 652223.7000000001], [""james booker"", 652223.7000000001], [""emily douglas"", 652223.7000000001], [""antonio miller"", 652223.7000000001], [""amanda bautista"", 652223.7000000001], [""daniel williams"", 629199.0], [""john martinez"", 627946.6000000001], [""jason hall"", 627946.6000000001], [""melissa green"", 626336.6000000001], [""william gutierrez"", 618508.3999999999], [""rebecca lopez"", 618508.3999999999], [""kimberly lewis"", 618508.3999999999], [""joseph lopez"", 618508.3999999999], [""james dominguez"", 618508.3999999999]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty""]",False,,,,
+booksql_071770,booksql,qwen,zero_shot,validation,hard,When was the last time we sold Club ,"SELECT MAX(master_txn_table.Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+JOIN products ON master_txn_table.Product_Service = products.Product_Service
+WHERE products.Product_Service = 'Club';","select transaction_date from master_txn_table  as T1 join chart_of_accounts as T2 on T1.account = T2.account_name where account_type in ('Income','Other Income') and product_service = ""Club "" order by transaction_date desc limit 1 ","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_077659,booksql,qwen,zero_shot,validation,hard,What acount had our biggest expense Last fiscal year?,"SELECT chart_of_accounts.Account_name, SUM(master_txn_table.Amount) AS Total_Expense
+FROM master_txn_table
+JOIN chart_of_accounts ON master_txn_table.Account = chart_of_accounts.Account_name
+WHERE master_txn_table.Transaction_DATE BETWEEN '2022-01-01' AND '2022-12-31'
+GROUP BY chart_of_accounts.Account_name
+ORDER BY Total_Expense DESC
+LIMIT 1;","select account, sum(debit) from master_txn_table as T1 join chart_of_accounts as T2 on T1.account = T2.account_name  where account_type in ('Expense','Other Expense') and transaction_date BETWEEN date(current_date, '-3 months', 'start of year','-1 years', '+3 months') AND date(current_date, '-3 months', 'start of year','-1 years', '+3 months', '+1 years', '-1 days') group by account order by sum(debit) desc limit 1","{""row_count"": 1, ""truncated"": false, ""rows"": [[""accounts receivable (a/r)"", 4861952114.58]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty""]",False,,,,
+booksql_071557,booksql,qwen,zero_shot,validation,hard,When was the last time we sold Club ,"SELECT MAX(master_txn_table.Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+JOIN products ON master_txn_table.Product_Service = products.Product_Service
+WHERE products.Product_Service = 'Club';","select transaction_date from master_txn_table  as T1 join chart_of_accounts as T2 on T1.account = T2.account_name where account_type in ('Income','Other Income') and product_service = ""Club "" order by transaction_date desc limit 1 ","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}","{""row_count"": 0, ""truncated"": false, ""rows"": []}",success,success,False,B_wrong_executable,"[""gold_result_empty"", ""generated_result_all_null""]",False,,,,
+booksql_077134,booksql,qwen,zero_shot,validation,medium,How many Photography did we sell to Kevin Valdez This fiscal year to date?,"SELECT COUNT(*) 
+FROM master_txn_table 
+JOIN customers ON master_txn_table.Customers = customers.customer_name 
+JOIN products ON master_txn_table.Product_Service = products.Product_Service 
+WHERE customers.customer_full_name = 'Kevin Valdez' 
+  AND products.Product_Service_type = 'Photography' 
+  AND master_txn_table.Transaction_DATE >= DATE('now','-1 year');","select sum(quantity) from master_txn_table where customers = ""Kevin Valdez"" and product_service = 'Photography' and transaction_type in ('invoice', 'sales receipt') and transaction_date BETWEEN date(current_date, '-3 months', 'start of year', '+3 months') AND date(current_date, '-3 months', 'start of year','+1 year', '+3 months', '-1 day') ","{""row_count"": 1, ""truncated"": false, ""rows"": [[0]]}","{""row_count"": 1, ""truncated"": false, ""rows"": [[null]]}",success,success,False,B_wrong_executable,"[""gold_result_all_null""]",False,,,,

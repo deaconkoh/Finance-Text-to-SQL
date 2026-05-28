@@ -1,0 +1,97 @@
+Database schema:
+
+Table: chart_of_accounts
+Columns:
+  - id: INTEGER, primary key
+  - businessID: INTEGER, primary key
+  - Account_name: TEXT, primary key
+  - Account_type: TEXT
+
+Table: customers
+Columns:
+  - id: INTEGER, primary key
+  - businessID: INTEGER, primary key
+  - customer_name: TEXT, primary key
+  - customer_full_name: TEXT
+  - Billing_address: TEXT
+  - Billing_city: TEXT
+  - Billing_state: TEXT
+  - Billing_ZIP_code: INTEGER
+  - Shipping_address: TEXT
+  - Shipping_city: TEXT
+  - Shipping_state: TEXT
+  - Shipping_ZIP_code: INTEGER
+  - Balance: DOUBLE
+
+Table: employees
+Columns:
+  - id: INTEGER, primary key
+  - businessID: TEXT, primary key
+  - Employee_name: TEXT, primary key
+  - Employee_ID: TEXT
+  - Hire_date: DATE
+  - Billing_rate: DOUBLE
+  - Deleted: TEXT
+
+Table: master_txn_table
+Columns:
+  - id: INTEGER
+  - businessID: INTEGER
+  - Transaction_ID: INTEGER
+  - Transaction_DATE: DATE
+  - Transaction_TYPE: TEXT
+  - Amount: DOUBLE
+  - CreatedDATE: DATE
+  - CreatedUSER: TEXT
+  - Account: TEXT
+  - AR_paid: TEXT
+  - AP_paid: TEXT
+  - Due_DATE: DATE
+  - Open_balance: DOUBLE
+  - Customers: TEXT
+  - Vendor: TEXT
+  - Product_Service: TEXT
+  - Quantity: INTEGER
+  - Rate: DOUBLE
+  - Credit: DOUBLE
+  - Debit: DOUBLE
+  - payment_method: TEXT
+  - Misc: TEXT
+
+Table: payment_method
+Columns:
+  - id: INTEGER, primary key
+  - businessID: TEXT, primary key
+  - Payment_method: TEXT, primary key
+  - Credit_card: TEXT
+
+Table: products
+Columns:
+  - id: INTEGER, primary key
+  - businessID: TEXT, primary key
+  - Product_Service: TEXT, primary key
+  - Product_Service_type: TEXT
+
+Table: vendors
+Columns:
+  - id: INTEGER, primary key
+  - businessID: TEXT, primary key
+  - Vendor_name: TEXT, primary key
+  - Billing_address: TEXT
+  - Billing_city: TEXT
+  - Billing_state: TEXT
+  - Billing_ZIP_code: INTEGER
+  - Balance: DOUBLE
+
+Foreign keys:
+  master_txn_table.businessID -> payment_method.businessID
+  master_txn_table.payment_method -> payment_method.payment_method
+  master_txn_table.businessID -> employees.businessID
+  master_txn_table.businessID -> products.businessID
+  master_txn_table.Product_Service -> products.Product_Service
+  master_txn_table.businessID -> vendors.businessID
+  master_txn_table.Vendor -> vendors.Vendor_name
+  master_txn_table.businessID -> customers.businessID
+  master_txn_table.Customers -> customers.customer_name
+  master_txn_table.businessID -> chart_of_accounts.businessID
+  master_txn_table.Account -> chart_of_accounts.Account_name

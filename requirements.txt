@@ -4,3 +4,4 @@ pyyaml
 tqdm
 mlx-lm
 llama-cpp-python
+pytest

@@ -3,3 +3,5 @@ AGENTS.md
 __pycache__/
 .vscode
 *.pyc
+.DS_Store
+*.sqlite

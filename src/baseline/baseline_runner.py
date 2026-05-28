@@ -1,166 +1,245 @@
 """
-baseline_runner.py
+Run frozen BookSQL baseline generation.
 
-Run commands should be executed from the project root:
+Expected setup workflow:
+    python scripts/setup_booksql.py
 
-Qwen on the custom KI subset:
-python -m src.baseline.baseline_runner \
-  --model qwen \
-  --custom-subset-csv data/subsets/Labelled_candidate_set.csv \
-  --output-path data/outputs/baseline_qwen_ki_subset.jsonl
+That setup script prepares:
+    data/booksql/booksql_normalized.jsonl
+    data/booksql/accounting.sqlite
+    data/booksql/schema.txt
 
-Arctic on the custom KI subset:
-python -m src.baseline.baseline_runner \
-  --model arctic \
-  --custom-subset-csv data/subsets/Labelled_candidate_set.csv \
-  --output-path data/outputs/baseline_arctic_ki_subset.jsonl
+This runner supports:
+    - zero-shot baseline generation
+    - few-shot baseline generation with exactly 3 train examples:
+      one easy, one medium, one hard
 
-Optional: To run FINCH internal partition evaluation instead of the custom subset, omit the 
---custom-subset-csv argument and specify --partition if needed (default is "test"):
+Examples:
 
-Note:
-- Qwen uses MLX 4-bit.
-- Arctic uses llama.cpp with a GGUF model. If --model-path is not provided, the default GGUF file is downloaded from Hugging Face cache.
+Qwen zero-shot validation:
+    python -m src.baseline.baseline_runner \
+      --model qwen \
+      --split validation \
+      --prompt-setting zero_shot
+
+Qwen few-shot validation:
+    python -m src.baseline.baseline_runner \
+      --model qwen \
+      --split validation \
+      --prompt-setting few_shot
+
+Qwen zero-shot on a small validation sample:
+    python -m src.baseline.baseline_runner \
+      --model qwen \
+      --split validation \
+      --prompt-setting zero_shot \
+      --data-path data/booksql/booksql_validation_sample_5.jsonl \
+      --output-path data/outputs/baseline_qwen_validation_sample_5_zero_shot.jsonl
+
+Qwen few-shot on a small validation sample:
+    python -m src.baseline.baseline_runner \
+      --model qwen \
+      --split validation \
+      --prompt-setting few_shot \
+      --data-path data/booksql/booksql_validation_sample_5.jsonl \
+      --output-path data/outputs/baseline_qwen_validation_sample_5_few_shot.jsonl
+
+For few-shot sample runs:
+    --data-path controls the inference records.
+    Few-shot examples are still loaded from the full train split by default.
+    Use --few-shot-data-path only if you want to override the train source.
 """
+
+from __future__ import annotations
 
 import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any, Callable
 
 from tqdm import tqdm
 
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = Path(__file__).resolve().parents[1]
+
 for import_root in (PROJECT_ROOT, SRC_ROOT):
     if str(import_root) not in sys.path:
         sys.path.insert(0, str(import_root))
 
 try:
-    from src.utils.data_utils import (
-        get_full_schema_cached,
-        load_baseline_eval_records,
-        load_finch_schemas,
-    )
+    from src.utils.data_utils import BOOKSQL_DATASET_NAME, load_booksql_records
     from src.utils.inference_utils import (
-        build_baseline_prompt,
+        build_few_shot_prompt,
+        build_zero_shot_prompt,
         extract_sql,
-        load_completed_question_ids,
+        load_completed_run_keys,
     )
 except ModuleNotFoundError:
-    from utils.data_utils import (
-        get_full_schema_cached,
-        load_baseline_eval_records,
-        load_finch_schemas,
-    )
+    from utils.data_utils import BOOKSQL_DATASET_NAME, load_booksql_records
     from utils.inference_utils import (
-        build_baseline_prompt,
+        build_few_shot_prompt,
+        build_zero_shot_prompt,
         extract_sql,
-        load_completed_question_ids,
+        load_completed_run_keys,
     )
 
 
 QWEN_MODEL_NAME = "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit"
-QWEN_MODEL_KEY = "qwen_coder"
+QWEN_GENERATOR = "qwen"
 
-ARCTIC_MODEL_KEY = "arctic_text2sql_r1"
+ARCTIC_GENERATOR = "arctic"
 ARCTIC_MODEL_NAME = "Snowflake/Arctic-Text2SQL-R1-7B"
 ARCTIC_DEFAULT_REPO_ID = "mradermacher/Arctic-Text2SQL-R1-7B-GGUF"
 ARCTIC_DEFAULT_FILENAME = "Arctic-Text2SQL-R1-7B.IQ4_XS.gguf"
 
-DEFAULT_PARTITION = "test"
-DEFAULT_MAX_NEW_TOKENS = 192
+DEFAULT_SPLIT = "validation"
+DEFAULT_PROMPT_SETTING = "zero_shot"
+DEFAULT_MAX_NEW_TOKENS = 128
 DEFAULT_N_CTX = 8192
-DEFAULT_N_THREADS = 6
-DEFAULT_OUTPUT_PATHS = {
-    "qwen": "data/outputs/baseline_qwen_test_local.jsonl",
-    "arctic": "data/outputs/baseline_arctic_test_local.jsonl",
-}
+DEFAULT_N_THREADS = 4
+
+
+def normalize_level(value: Any) -> str:
+    return str(value).strip().lower()
+
+
+def select_few_shot_examples(
+    train_records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Select exactly 3 deterministic few-shot examples from the train split:
+    one easy, one medium, and one hard.
+
+    The first available example for each level is used for reproducibility.
+    """
+    required_levels = ("easy", "medium", "hard")
+    selected_by_level: dict[str, dict[str, Any]] = {}
+
+    for record in train_records:
+        if str(record.get("split", "")).strip().lower() != "train":
+            continue
+
+        level = normalize_level(record.get("level"))
+
+        if level in required_levels and level not in selected_by_level:
+            selected_by_level[level] = record
+
+        if len(selected_by_level) == len(required_levels):
+            break
+
+    missing_levels = [
+        level for level in required_levels if level not in selected_by_level
+    ]
+
+    if missing_levels:
+        raise ValueError(
+            "Could not select few-shot examples. Missing train example level(s): "
+            f"{', '.join(missing_levels)}"
+        )
+
+    return [
+        {
+            "question_id": selected_by_level[level]["question_id"],
+            "level": level,
+            "question": selected_by_level[level]["question"],
+            "gold_sql": selected_by_level[level]["gold_sql"],
+        }
+        for level in required_levels
+    ]
 
 
 def run_baseline_inference(
-    data_subset,
-    schemas,
-    output_path,
-    model_key,
-    generate_fn,
-    extra_metadata=None,
-):
-    """
-    Shared baseline runner for all models/backends.
+    records: list[dict[str, Any]],
+    output_path: Path,
+    generator: str,
+    generate_fn: Callable[[str], str],
+    model_metadata: dict[str, Any],
+    prompt_setting: str = DEFAULT_PROMPT_SETTING,
+    few_shot_examples: list[dict[str, Any]] | None = None,
+) -> None:
+    if prompt_setting not in {"zero_shot", "few_shot"}:
+        raise ValueError(f"Unsupported prompt setting: {prompt_setting}")
 
-    generate_fn should accept one argument:
-        generate_fn(prompt: str) -> str
-    """
+    if prompt_setting == "few_shot" and not few_shot_examples:
+        raise ValueError("few_shot prompting requires selected train examples.")
 
-    completed_ids = load_completed_question_ids(output_path)
-    print(f"Already completed: {len(completed_ids)}")
+    completed_keys = load_completed_run_keys(output_path)
+    print(f"Already completed for this output file: {len(completed_keys)}")
 
-    extra_metadata = extra_metadata or {}
+    with output_path.open("a", encoding="utf-8") as f:
+        for record in tqdm(records):
+            run_key = (record["question_id"], generator, prompt_setting)
 
-    with open(output_path, "a", encoding="utf-8") as f:
-        for record in tqdm(data_subset):
-            question_id = record["question_id"]
-
-            if question_id in completed_ids:
+            if run_key in completed_keys:
                 continue
 
             try:
-                full_schema = get_full_schema_cached(record, schemas)
-
-                prompt = build_baseline_prompt(
-                    question=record["question"],
-                    full_schema=full_schema,
-                )
+                if prompt_setting == "few_shot":
+                    prompt = build_few_shot_prompt(
+                        question=record["question"],
+                        schema=record["schema"],
+                        examples=few_shot_examples,
+                    )
+                else:
+                    prompt = build_zero_shot_prompt(
+                        question=record["question"],
+                        schema=record["schema"],
+                    )
 
                 raw_output = generate_fn(prompt)
-                pred_sql = extract_sql(raw_output)
+                generated_sql = extract_sql(raw_output)
 
                 result = {
-                    "model_key": model_key,
-                    "question_id": question_id,
-                    "db_name": record["db_name"],
+                    "question_id": record["question_id"],
                     "db_id": record["db_id"],
-                    "partition": record["partition"],
-                    "difficulty": record["difficulty"],
+                    "split": record["split"],
+                    "level": record["level"],
+                    "generator": generator,
+                    "prompt_setting": prompt_setting,
                     "question": record["question"],
-                    "gold_sql": record.get("gold_sql") or record.get("SQL"),
-                    "knowledge_intensity": record.get("knowledge_intensity"),
+                    "gold_sql": record["gold_sql"],
+                    "generated_sql": generated_sql,
                     "raw_output": raw_output,
-                    "pred_sql": pred_sql,
+                    "model_metadata": model_metadata,
                     "status": "success",
                     "error": None,
-                    **extra_metadata,
                 }
 
-            except Exception as e:
+                if prompt_setting == "few_shot":
+                    result["few_shot_examples"] = few_shot_examples
+
+            except Exception as exc:
                 result = {
-                    "model_key": model_key,
-                    "question_id": question_id,
-                    "db_name": record.get("db_name"),
+                    "question_id": record.get("question_id"),
                     "db_id": record.get("db_id"),
-                    "partition": record.get("partition"),
-                    "difficulty": record.get("difficulty"),
+                    "split": record.get("split"),
+                    "level": record.get("level"),
+                    "generator": generator,
+                    "prompt_setting": prompt_setting,
                     "question": record.get("question"),
-                    "gold_sql": record.get("gold_sql") or record.get("SQL"),
-                    "knowledge_intensity": record.get("knowledge_intensity"),
+                    "gold_sql": record.get("gold_sql"),
+                    "generated_sql": None,
                     "raw_output": None,
-                    "pred_sql": None,
+                    "model_metadata": model_metadata,
                     "status": "failed",
-                    "error": str(e),
-                    **extra_metadata,
+                    "error": str(exc),
                 }
+
+                if prompt_setting == "few_shot":
+                    result["few_shot_examples"] = few_shot_examples
 
             f.write(json.dumps(result, ensure_ascii=False) + "\n")
             f.flush()
-            completed_ids.add(question_id)
+            completed_keys.add(run_key)
 
     print(f"Saved results to {output_path}")
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run a frozen FINCH Text-to-SQL baseline.",
+        description="Run a frozen BookSQL Text-to-SQL baseline.",
     )
 
     parser.add_argument(
@@ -169,86 +248,136 @@ def parse_args():
         choices=["qwen", "arctic"],
         help="Baseline model/backend to run.",
     )
-
     parser.add_argument(
-        "--custom-subset-csv",
+        "--prompt-setting",
+        default=DEFAULT_PROMPT_SETTING,
+        choices=["zero_shot", "few_shot"],
+        help="Prompt setting.",
+    )
+    parser.add_argument(
+        "--split",
+        default=DEFAULT_SPLIT,
+        help="Prepared BookSQL split to run. Use 'all' to run every split.",
+    )
+    parser.add_argument(
+        "--data-path",
         default=None,
-        help="Local path to custom labelled subset CSV file.",
+        help=(
+            "Optional local JSONL input for inference records. "
+            "Useful for running a small validation sample."
+        ),
     )
-
+    
     parser.add_argument(
-        "--partition",
-        default=DEFAULT_PARTITION,
-        choices=["train", "dev", "val", "test"],
-        help="FINCH internal partition to use when no custom CSV is provided.",
+        "--limit",
+        type=int,
+        default=None,
+        help=(
+            "Optional maximum number of inference records to run. "
+            "Useful for smoke tests. Does not affect few-shot example selection."
+        ),
     )
-
+    
+    parser.add_argument(
+        "--few-shot-data-path",
+        default=None,
+        help=(
+            "Optional local JSONL source for selecting few-shot train examples. "
+            "If omitted, examples are loaded from the prepared full BookSQL dataset."
+        ),
+    )
+    parser.add_argument(
+        "--schema-path",
+        default=None,
+        help="Optional explicit BookSQL schema path.",
+    )
+    parser.add_argument(
+        "--db-path",
+        default=None,
+        help="Optional explicit BookSQL SQLite path.",
+    )
+    parser.add_argument(
+        "--dataset-name",
+        default=BOOKSQL_DATASET_NAME,
+        help=(
+            "Kept for compatibility with load_booksql_records(). "
+            "BookSQL setup should already be prepared locally."
+        ),
+    )
     parser.add_argument(
         "--output-path",
         default=None,
         help="Append/resume JSONL output path.",
     )
-
     parser.add_argument(
         "--max-new-tokens",
         type=int,
         default=DEFAULT_MAX_NEW_TOKENS,
     )
-
     parser.add_argument(
         "--model-path",
         default=None,
         help="Optional local path to Arctic GGUF model file.",
     )
-
     parser.add_argument(
         "--repo-id",
         default=ARCTIC_DEFAULT_REPO_ID,
         help="Hugging Face repo ID for Arctic GGUF model.",
     )
-
     parser.add_argument(
         "--filename",
         default=ARCTIC_DEFAULT_FILENAME,
         help="GGUF filename inside the Hugging Face repo.",
     )
-
     parser.add_argument(
         "--n-ctx",
         type=int,
         default=DEFAULT_N_CTX,
     )
-
     parser.add_argument(
         "--n-gpu-layers",
         type=int,
         default=-1,
         help="Use -1 to offload all supported layers to Metal GPU.",
     )
-
     parser.add_argument(
         "--n-threads",
         type=int,
         default=DEFAULT_N_THREADS,
     )
-
     parser.add_argument(
         "--verbose",
         action="store_true",
+    )
+    
+    parser.add_argument(
+        "--n-batch",
+        type=int,
+        default=512,
+        help="llama.cpp prompt processing batch size.",
     )
 
     return parser.parse_args()
 
 
-def resolve_output_path(args) -> Path:
-    return Path(args.output_path or DEFAULT_OUTPUT_PATHS[args.model])
+def resolve_output_path(args: argparse.Namespace) -> Path:
+    if args.output_path:
+        return Path(args.output_path)
+
+    filename = (
+        f"baseline_{args.model}_{args.split}_{args.prompt_setting}.jsonl"
+    )
+
+    return Path("data") / "outputs" / filename
 
 
-def resolve_arctic_model_path(args) -> str:
+def resolve_arctic_model_path(args: argparse.Namespace) -> str:
     if args.model_path is not None:
         model_path = Path(args.model_path)
+
         if not model_path.exists():
             raise FileNotFoundError(f"Local model path does not exist: {model_path}")
+
         return str(model_path)
 
     from huggingface_hub import hf_hub_download
@@ -264,7 +393,9 @@ def resolve_arctic_model_path(args) -> str:
     )
 
 
-def build_qwen_runner(args):
+def build_qwen_runner(
+    args: argparse.Namespace,
+) -> tuple[str, Callable[[str], str], dict[str, Any]]:
     from mlx_lm import load
 
     try:
@@ -275,7 +406,7 @@ def build_qwen_runner(args):
     print("Loading Qwen model with MLX 4-bit...")
     model, tokenizer = load(QWEN_MODEL_NAME)
 
-    def generate_fn(prompt):
+    def generate_fn(prompt: str) -> str:
         return generate_mlx_output(
             model=model,
             tokenizer=tokenizer,
@@ -283,7 +414,7 @@ def build_qwen_runner(args):
             max_new_tokens=args.max_new_tokens,
         )
 
-    return QWEN_MODEL_KEY, generate_fn, {
+    return QWEN_GENERATOR, generate_fn, {
         "model_name": QWEN_MODEL_NAME,
         "inference_backend": "mlx",
         "quantization": "4bit",
@@ -291,7 +422,9 @@ def build_qwen_runner(args):
     }
 
 
-def build_arctic_runner(args):
+def build_arctic_runner(
+    args: argparse.Namespace,
+) -> tuple[str, Callable[[str], str], dict[str, Any]]:
     from llama_cpp import Llama
 
     try:
@@ -309,18 +442,20 @@ def build_arctic_runner(args):
         n_ctx=args.n_ctx,
         n_gpu_layers=args.n_gpu_layers,
         n_threads=args.n_threads,
+        n_batch=args.n_batch,
+        flash_attn=True,
         seed=42,
         verbose=args.verbose,
     )
 
-    def generate_fn(prompt):
+    def generate_fn(prompt: str) -> str:
         return generate_llama_cpp_output(
             llm=llm,
             prompt=prompt,
             max_new_tokens=args.max_new_tokens,
         )
 
-    return ARCTIC_MODEL_KEY, generate_fn, {
+    return ARCTIC_GENERATOR, generate_fn, {
         "model_name": ARCTIC_MODEL_NAME,
         "hf_repo_id": args.repo_id,
         "hf_filename": args.filename,
@@ -334,44 +469,93 @@ def build_arctic_runner(args):
     }
 
 
-def main():
+def load_inference_records(args: argparse.Namespace) -> list[dict[str, Any]]:
+    requested_split = None if args.split == "all" else args.split
+
+    print("Loading BookSQL inference records...")
+    print(f"Split     : {args.split}")
+
+    records = load_booksql_records(
+        split=requested_split,
+        data_path=args.data_path,
+        schema_path=args.schema_path,
+        db_path=args.db_path,
+        dataset_name=args.dataset_name,
+    )
+
+    if not records:
+        raise ValueError(
+            f"No BookSQL records loaded for split '{args.split}'. "
+            "Check the split name and data source."
+        )
+
+    if args.limit is not None:
+        if args.limit <= 0:
+            raise ValueError("--limit must be a positive integer.")
+
+        original_count = len(records)
+        records = records[: args.limit]
+        print(f"Limit     : {args.limit} / {original_count} records")
+
+    return records
+
+
+def load_few_shot_examples(
+    args: argparse.Namespace,
+) -> list[dict[str, Any]] | None:
+    if args.prompt_setting != "few_shot":
+        return None
+
+    print("Loading BookSQL train records for few-shot examples...")
+
+    train_records = load_booksql_records(
+        split="train",
+        data_path=args.few_shot_data_path,
+        schema_path=args.schema_path,
+        db_path=args.db_path,
+        dataset_name=args.dataset_name,
+    )
+
+    few_shot_examples = select_few_shot_examples(train_records)
+
+    print(
+        "Few-shot examples: "
+        + ", ".join(
+            f"{example['level']}={example['question_id']}"
+            for example in few_shot_examples
+        )
+    )
+
+    return few_shot_examples
+
+
+def main() -> None:
     args = parse_args()
 
     output_path = resolve_output_path(args)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print("Loading FINCH schemas...")
-    schemas = load_finch_schemas()
+    records = load_inference_records(args)
+    few_shot_examples = load_few_shot_examples(args)
 
-    if args.custom_subset_csv:
-        print("Loading custom subset from CSV...")
-        print(f"Input CSV : {args.custom_subset_csv}")
-    else:
-        print("Loading FINCH dataset...")
-        print(f"Partition : {args.partition}")
-
-    data_list = load_baseline_eval_records(
-        custom_subset_csv=args.custom_subset_csv,
-        partition=args.partition,
-    )
-
-    print(f"Rows      : {len(data_list)}")
+    print(f"Rows      : {len(records)}")
     print(f"Output    : {output_path}")
 
     if args.model == "qwen":
-        model_key, generate_fn, extra_metadata = build_qwen_runner(args)
+        generator, generate_fn, model_metadata = build_qwen_runner(args)
     elif args.model == "arctic":
-        model_key, generate_fn, extra_metadata = build_arctic_runner(args)
+        generator, generate_fn, model_metadata = build_arctic_runner(args)
     else:
         raise ValueError(f"Unsupported model: {args.model}")
 
     run_baseline_inference(
-        data_subset=data_list,
-        schemas=schemas,
+        records=records,
         output_path=output_path,
-        model_key=model_key,
+        generator=generator,
         generate_fn=generate_fn,
-        extra_metadata=extra_metadata,
+        model_metadata=model_metadata,
+        prompt_setting=args.prompt_setting,
+        few_shot_examples=few_shot_examples,
     )
 
 
