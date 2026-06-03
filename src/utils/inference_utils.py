@@ -1,10 +1,165 @@
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+import urllib.request
+
+
+def build_ollama_generate_fn(
+    model_name: str,
+    temperature: float = 0.0,
+    num_predict: int = 2048,
+    timeout: int = 300,
+    format_json: bool = True,
+    think: bool | None = None,
+):
+    def generate(prompt: str) -> str:
+        payload = {
+            "model": model_name,
+            "messages": [
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": num_predict,
+            },
+        }
+
+        if format_json:
+            payload["format"] = "json"
+            
+        if think is not None:
+            payload["think"] = think
+
+        request = urllib.request.Request(
+            "http://localhost:11434/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8"))
+
+        message = data.get("message") or {}
+        content = (message.get("content") or "").strip()
+        thinking = (message.get("thinking") or "").strip()
+
+        if not content and thinking:
+            raise ValueError(
+                "Ollama returned empty final content but non-empty thinking. "
+                "The model likely exhausted num_predict before producing final JSON. "
+                f"done_reason={data.get('done_reason')}, "
+                f"eval_count={data.get('eval_count')}, "
+                f"thinking_preview={thinking[:500]}"
+            )
+
+        if not content:
+            raise ValueError(
+                "Ollama returned empty final content. "
+                f"done_reason={data.get('done_reason')}, "
+                f"eval_count={data.get('eval_count')}"
+            )
+
+        return content
+
+    return generate
 
 SPECIAL_TOKENS = ("<|im_end|>", "</s>", "<|endoftext|>")
 
+def build_mlx_vlm_generate_fn(
+    model_name: str,
+    temperature: float = 0.0,
+    num_predict: int = 768,
+):
+    """
+    Build a local MLX-VLM generation function.
+
+    Intended for models such as:
+        mlx-community/gemma-4-e4b-it-4bit
+
+    Returns:
+        prompt: str -> output: str
+    """
+    from mlx_vlm import load, generate
+    from mlx_vlm.prompt_utils import apply_chat_template
+    from mlx_vlm.utils import load_config
+
+    print(f"Loading MLX-VLM verifier model: {model_name}")
+
+    model, processor = load(model_name)
+    config = load_config(model_name)
+
+    def generate_fn(prompt: str) -> str:
+        formatted_prompt = apply_chat_template(
+            processor,
+            config,
+            prompt,
+            num_images=0,
+        )
+
+        result = generate(
+            model,
+            processor,
+            formatted_prompt,
+            max_tokens=num_predict,
+            temperature=temperature,
+        )
+
+        if hasattr(result, "text"):
+            return result.text.strip()
+
+        if hasattr(result, "response"):
+            return result.response.strip()
+
+        return str(result).strip()
+
+    return generate_fn
+
+
+def infer_verifier_backend(model_name: str) -> str:
+    """
+    Infer verifier backend from model name.
+
+    - Hugging Face MLX models usually use repo-style names like:
+      mlx-community/gemma-4-e4b-it-4bit
+    - Ollama models usually use tag-style names like:
+      deepseek-r1:8b
+      gemma4:e4b-mlx
+    """
+    if model_name.startswith("mlx-community/"):
+        return "mlx-vlm"
+
+    return "ollama"
+
+
+def build_verifier_generate_fn(
+    model_name: str,
+    temperature: float = 0.0,
+    num_predict: int = 768,
+    timeout: int = 300,
+):
+    backend = infer_verifier_backend(model_name)
+
+    if backend == "mlx-vlm":
+        return build_mlx_vlm_generate_fn(
+            model_name=model_name,
+            temperature=temperature,
+            num_predict=num_predict,
+        )
+
+    if backend == "ollama":
+        return build_ollama_generate_fn(
+            model_name=model_name,
+            temperature=temperature,
+            num_predict=num_predict,
+            timeout=timeout,
+            format_json=True,
+            think=None,
+        )
+
+    raise ValueError(f"Unsupported verifier backend inferred: {backend}")
 
 def build_zero_shot_prompt(question: str, schema: str) -> str:
     return f"""Instruction:
@@ -18,7 +173,6 @@ Schema:
 Question:
 {question}
 """
-
 
 def build_few_shot_prompt(
     question: str,

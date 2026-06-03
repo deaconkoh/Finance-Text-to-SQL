@@ -1,3 +1,45 @@
+"""
+Evaluate BookSQL baseline JSONL outputs by executing SQL in parallel.
+
+This script takes the baseline outputs (which contain both generated SQL and gold SQL), 
+runs them against the BookSQL SQLite database, and categorizes each prediction into 
+one of four evaluation groups based on execution results:
+
+    - Group A (Correct Executable): Generated SQL runs successfully and output matches gold SQL.
+    - Group B (Wrong Executable): Generated SQL runs successfully but output differs from gold.
+    - Group C (Non-executable): Generated SQL throws a syntax or execution error.
+    - Group D (Ambiguous): Excluded from primary metrics (e.g., gold SQL throws an error, 
+      or if configured, both queries return completely empty/null tables).
+
+Key Features:
+    - Multi-threaded execution for faster processing.
+    - SQLite progress handler to terminate run-away/hanging generated queries.
+    - Subset evaluation for rapid testing.
+
+Examples:
+
+1. Basic full evaluation:
+    python -m src.eval.evaluate_outputs \
+      --input-jsonl data/outputs/baseline/baseline_qwen_train_sample_50_few_shot.jsonl \
+      --output-jsonl data/outputs/evaluated/50_evaluated_qwen_train_few_shot.jsonl \
+      --metrics-json data/outputs/evaluated/50_metrics_qwen_train_few_shot.json
+      
+2. Run a quick subset (smoke test of 50 samples):
+    python -m src.eval.evaluate_outputs \
+      --input-jsonl data/outputs/baseline/baseline_qwen_train_few_shot.jsonl \
+      --output-jsonl data/outputs/evaluated/evaluated_qwen_train_subset.jsonl \
+      --metrics-json data/outputs/evaluated/metrics_qwen_train_subset.json \
+      --evaluate-subset true \
+      --subset-size 50
+
+3. Strict evaluation (Treat empty/null results as ambiguous and exclude them):
+    python -m src.eval.evaluate_outputs \
+      --input-jsonl data/outputs/baseline/baseline_qwen_train_few_shot.jsonl \
+      --output-jsonl data/outputs/evaluated/evaluated_qwen_train_few_shot_strict.jsonl \
+      --metrics-json data/outputs/evaluated/metrics_qwen_train_few_shot_strict.json \
+      --treat-empty-results-as-ambiguous
+"""
+
 from __future__ import annotations
 
 import argparse

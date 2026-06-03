@@ -1,0 +1,680 @@
+
+########################################################################################################################
+CONTROLLED DECOMPILER TESTS
+########################################################################################################################
+========================================================================================================================
+TEST: payment_transaction_type
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+How many payments did we receive?
+
+SQL:
+SELECT COUNT(*)
+            FROM master_txn_table
+            WHERE Transaction_TYPE = 'Payment';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table
+- No joins detected.
+[Measure Usage]
+- Aggregation function(s): count
+- Aggregation expression(s): COUNT(*)
+- Measure type(s): none detected
+- Sign convention(s): none detected
+[Object Scope]
+- Transaction concept(s): payment
+- Transaction type value(s): payment
+[Temporal Scope]
+- No schema-grounded temporal filter was detected.
+[Applied Non-Temporal Filters]
+- `Transaction_TYPE = 'Payment'` | context: concepts=payment; semantic_roles=transaction_type_classifier; measure_types=categorical; entity_scopes=transaction
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: expense_sum
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+What is our total expense?
+
+SQL:
+SELECT SUM(m.Debit)
+            FROM master_txn_table m
+            JOIN chart_of_accounts c
+            ON m.businessID = c.businessID
+            AND m.Account = c.Account_name
+            WHERE c.Account_type = 'expenses';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table, chart_of_accounts
+- Join(s):
+  - joined `chart_of_accounts` on `m.businessID = c.businessID AND m.Account = c.Account_name`
+[Measure Usage]
+- Aggregation function(s): sum
+- Aggregation expression(s): SUM(m.Debit)
+- Measure type(s): flow
+- Sign convention(s): debit-normal monetary value
+[Object Scope]
+- Account type concept(s): expense
+- Account type value(s): expenses
+[Temporal Scope]
+- No schema-grounded temporal filter was detected.
+[Applied Non-Temporal Filters]
+- `c.Account_type = 'expenses'` | context: concepts=expense; semantic_roles=account_type_classifier; measure_types=categorical; entity_scopes=account
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: revenue_sum
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+What is our total revenue?
+
+SQL:
+SELECT SUM(m.Credit)
+            FROM master_txn_table m
+            JOIN chart_of_accounts c
+            ON m.businessID = c.businessID
+            AND m.Account = c.Account_name
+            WHERE c.Account_type = 'income';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table, chart_of_accounts
+- Join(s):
+  - joined `chart_of_accounts` on `m.businessID = c.businessID AND m.Account = c.Account_name`
+[Measure Usage]
+- Aggregation function(s): sum
+- Aggregation expression(s): SUM(m.Credit)
+- Measure type(s): flow
+- Sign convention(s): credit-normal monetary value
+[Object Scope]
+- Account type concept(s): revenue
+- Account type value(s): income
+[Temporal Scope]
+- No schema-grounded temporal filter was detected.
+[Applied Non-Temporal Filters]
+- `c.Account_type = 'income'` | context: concepts=revenue; semantic_roles=account_type_classifier; measure_types=categorical; entity_scopes=account
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: date_filter
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+What is our total amount this year?
+
+SQL:
+SELECT SUM(Amount)
+            FROM master_txn_table
+            WHERE Transaction_DATE >= '2024-01-01';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table
+- No joins detected.
+[Measure Usage]
+- Aggregation function(s): sum
+- Aggregation expression(s): SUM(Amount)
+- Measure type(s): flow
+- Sign convention(s): gross amount with no debit/credit direction
+[Object Scope]
+- No schema-grounded account type, transaction type, or entity scope filter was detected.
+[Temporal Scope]
+- Date role(s) used for filtering: transaction_date
+- Date filter condition(s):
+  - `Transaction_DATE >= '2024-01-01'`
+[Applied Non-Temporal Filters]
+- None detected.
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: computed_filter
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+What is the total amount for high-value line items?
+
+SQL:
+SELECT SUM(Amount)
+            FROM master_txn_table
+            WHERE Quantity * Rate > 10000;
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table
+- No joins detected.
+[Measure Usage]
+- Aggregation function(s): sum
+- Aggregation expression(s): SUM(Amount)
+- Measure type(s): flow
+- Sign convention(s): gross amount with no debit/credit direction
+[Object Scope]
+- No schema-grounded account type, transaction type, or entity scope filter was detected.
+[Temporal Scope]
+- No schema-grounded temporal filter was detected.
+[Applied Non-Temporal Filters]
+- `Quantity * Rate > 10000` | context: semantic_roles=quantity_measure, rate_measure; measure_types=flow; entity_scopes=transaction
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: column_to_column_filter
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+How many transactions were created before the transaction date?
+
+SQL:
+SELECT COUNT(*)
+            FROM master_txn_table
+            WHERE Transaction_DATE > CreatedDATE;
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table
+- No joins detected.
+[Measure Usage]
+- Aggregation function(s): count
+- Aggregation expression(s): COUNT(*)
+- Measure type(s): none detected
+- Sign convention(s): none detected
+[Object Scope]
+- No schema-grounded account type, transaction type, or entity scope filter was detected.
+[Temporal Scope]
+- Date role(s) used for filtering: system_created_date, transaction_date
+- Date filter condition(s):
+  - `Transaction_DATE > CreatedDATE`
+[Applied Non-Temporal Filters]
+- None detected.
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: group_order_limit
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+Which account had the highest expense?
+
+SQL:
+SELECT c.Account_name, SUM(m.Debit)
+            FROM master_txn_table m
+            JOIN chart_of_accounts c
+            ON m.businessID = c.businessID
+            AND m.Account = c.Account_name
+            WHERE c.Account_type = 'expenses'
+            GROUP BY c.Account_name
+            ORDER BY SUM(m.Debit) DESC
+            LIMIT 1;
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table, chart_of_accounts
+- Join(s):
+  - joined `chart_of_accounts` on `m.businessID = c.businessID AND m.Account = c.Account_name`
+[Measure Usage]
+- Aggregation function(s): sum
+- Aggregation expression(s): SUM(m.Debit)
+- Measure type(s): flow
+- Sign convention(s): debit-normal monetary value
+[Object Scope]
+- Account type concept(s): expense
+- Account type value(s): expenses
+[Temporal Scope]
+- No schema-grounded temporal filter was detected.
+[Applied Non-Temporal Filters]
+- `c.Account_type = 'expenses'` | context: concepts=expense; semantic_roles=account_type_classifier; measure_types=categorical; entity_scopes=account
+[Structure]
+- Grouped by: chart_of_accounts.Account_name
+- Ordered by: SUM(m.Debit) DESC
+- Limited to 1 row(s).
+
+========================================================================================================================
+TEST: ambiguous_balance
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+What is the balance?
+
+SQL:
+SELECT Balance
+            FROM customers, vendors
+            WHERE Balance > 100;
+
+DECOMPILED EXECUTION PROFILE:
+[Status] AMBIGUOUS_SEMANTIC_MAPPING
+The query uses unqualified columns that collide across multiple annotated tables. The decompiled SQL meaning is therefore not safe for strict verification.
+Ambiguous columns: Balance
+Strict semantic verification should abstain.
+
+========================================================================================================================
+TEST: unsupported_cte
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+What is the total amount?
+
+SQL:
+WITH cte AS (
+                SELECT *
+                FROM master_txn_table
+            )
+            SELECT c.Amount
+            FROM cte c;
+
+DECOMPILED EXECUTION PROFILE:
+[Status] UNSUPPORTED_LINEAGE
+The query contains CTEs, subqueries, or derived tables whose output columns cannot be safely traced back to base schema columns in v1. Strict semantic verification should abstain.
+
+
+########################################################################################################################
+REAL BASELINE OUTPUT DECOMPILER TESTS
+########################################################################################################################
+Input file: data/outputs/evaluated/qwen_zero_shot_validation_evaluated.jsonl
+Limit: 10
+Evaluation group filter: B_wrong_executable
+
+========================================================================================================================
+TEST: real_1_booksql_070836
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+How many Macro did we sell to Shelby Kim in dec last year?
+
+SQL:
+SELECT COUNT(*) 
+FROM master_txn_table 
+JOIN customers ON master_txn_table.Customers = customers.customer_name 
+WHERE customers.customer_full_name = 'Shelby Kim' 
+  AND master_txn_table.Product_Service = 'Macro' 
+  AND master_txn_table.Transaction_DATE BETWEEN '2022-12-01' AND '2022-12-31';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table, customers
+- Join(s):
+  - joined `customers` on `master_txn_table.Customers = customers.customer_name`
+[Measure Usage]
+- Aggregation function(s): count
+- Aggregation expression(s): COUNT(*)
+- Measure type(s): none detected
+- Sign convention(s): none detected
+[Object Scope]
+- Entity scope(s): customer
+- Entity filter value(s): shelby kim
+[Temporal Scope]
+- Date role(s) used for filtering: transaction_date
+- Date filter condition(s):
+  - `master_txn_table.Transaction_DATE BETWEEN '2022-12-01' AND '2022-12-31'`
+[Applied Non-Temporal Filters]
+- `customers.customer_full_name = 'Shelby Kim'` | context: semantic_roles=entity_identifier; measure_types=categorical; entity_scopes=customer
+- `master_txn_table.Product_Service = 'Macro'` | context: semantic_roles=product_service_identifier; measure_types=categorical; entity_scopes=product_service
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: real_2_booksql_070843
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+When was the last time we sold IT and telecommunication
+
+SQL:
+SELECT MAX(Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+WHERE Product_Service = 'IT and Telecommunication';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table
+- No joins detected.
+[Measure Usage]
+- Aggregation function(s): max
+- Aggregation expression(s): MAX(Transaction_DATE)
+- Measure type(s): none detected
+- Sign convention(s): none detected
+[Object Scope]
+- No schema-grounded account type, transaction type, or entity scope filter was detected.
+[Temporal Scope]
+- No schema-grounded temporal filter was detected.
+[Applied Non-Temporal Filters]
+- `Product_Service = 'IT and Telecommunication'` | context: semantic_roles=product_service_identifier; measure_types=categorical; entity_scopes=product_service
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: real_3_booksql_070848
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+What our monthly spend on Carol Schmidt
+
+SQL:
+SELECT SUM(master_txn_table.Amount) AS Monthly_Spend
+FROM master_txn_table
+JOIN customers ON master_txn_table.Customers = customers.customer_name
+WHERE customers.customer_full_name = 'Carol Schmidt'
+AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table, customers
+- Join(s):
+  - joined `customers` on `master_txn_table.Customers = customers.customer_name`
+[Measure Usage]
+- Aggregation function(s): sum
+- Aggregation expression(s): SUM(master_txn_table.Amount)
+- Measure type(s): flow
+- Sign convention(s): gross amount with no debit/credit direction
+[Object Scope]
+- Entity scope(s): customer
+- Entity filter value(s): carol schmidt
+[Temporal Scope]
+- Date role(s) used for filtering: transaction_date
+- Date filter condition(s):
+  - `master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-01-31'`
+[Applied Non-Temporal Filters]
+- `customers.customer_full_name = 'Carol Schmidt'` | context: semantic_roles=entity_identifier; measure_types=categorical; entity_scopes=customer
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: real_4_booksql_070854
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+Did we receive payment from Annette Rodriguez partnership today?
+
+SQL:
+SELECT CASE 
+         WHEN EXISTS (SELECT 1 
+                      FROM master_txn_table 
+                      JOIN customers ON master_txn_table.Customers = customers.customer_name 
+                      WHERE customers.customer_full_name = 'Annette Rodriguez Partnership' 
+                      AND master_txn_table.Transaction_DATE = CURRENT_DATE 
+                      AND master_txn_table.AR_paid = 'Yes') 
+         THEN 'Yes' 
+         ELSE 'No' 
+       END AS received_payment;
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table, customers
+- Join(s):
+  - joined `customers` on `master_txn_table.Customers = customers.customer_name`
+[Measure Usage]
+- No aggregation detected.
+- Selected column(s): customers.customer_full_name, customers.customer_name, master_txn_table.AR_paid, master_txn_table.Customers, master_txn_table.Transaction_DATE
+- Measure type(s): none detected
+- Sign convention(s): none detected
+[Object Scope]
+- Entity scope(s): customer
+- Entity filter value(s): annette rodriguez partnership
+[Temporal Scope]
+- Date role(s) used for filtering: transaction_date
+- Date filter condition(s):
+  - `master_txn_table.Transaction_DATE = CURRENT_DATE`
+[Applied Non-Temporal Filters]
+- `master_txn_table.AR_paid = 'Yes'` | context: concepts=paid; semantic_roles=payment_status_flag; measure_types=categorical; entity_scopes=transaction
+- `customers.customer_full_name = 'Annette Rodriguez Partnership'` | context: semantic_roles=entity_identifier; measure_types=categorical; entity_scopes=customer
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: real_5_booksql_070862
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+Compare sales by customer in may last year
+
+SQL:
+SELECT 
+    c.customer_name, 
+    SUM(m.Amount) AS Total_Sales
+FROM 
+    master_txn_table m
+JOIN 
+    customers c ON m.Customers = c.customer_name
+WHERE 
+    m.Transaction_DATE BETWEEN '2022-05-01' AND '2022-05-31'
+GROUP BY 
+    c.customer_name
+ORDER BY 
+    Total_Sales DESC;
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table, customers
+- Join(s):
+  - joined `customers` on `m.Customers = c.customer_name`
+[Measure Usage]
+- Aggregation function(s): sum
+- Aggregation expression(s): SUM(m.Amount)
+- Measure type(s): flow
+- Sign convention(s): gross amount with no debit/credit direction
+[Object Scope]
+- No schema-grounded account type, transaction type, or entity scope filter was detected.
+[Temporal Scope]
+- Date role(s) used for filtering: transaction_date
+- Date filter condition(s):
+  - `m.Transaction_DATE BETWEEN '2022-05-01' AND '2022-05-31'`
+[Applied Non-Temporal Filters]
+- None detected.
+[Structure]
+- Grouped by: customers.customer_name
+- Ordered by: Total_Sales DESC
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: real_6_booksql_070871
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+When was the last time we sold Photography
+
+SQL:
+SELECT MAX(Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+WHERE Product_Service = 'Photography';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table
+- No joins detected.
+[Measure Usage]
+- Aggregation function(s): max
+- Aggregation expression(s): MAX(Transaction_DATE)
+- Measure type(s): none detected
+- Sign convention(s): none detected
+[Object Scope]
+- No schema-grounded account type, transaction type, or entity scope filter was detected.
+[Temporal Scope]
+- No schema-grounded temporal filter was detected.
+[Applied Non-Temporal Filters]
+- `Product_Service = 'Photography'` | context: semantic_roles=product_service_identifier; measure_types=categorical; entity_scopes=product_service
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: real_7_booksql_070874
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+When was the last time we sold Application Hosting
+
+SQL:
+SELECT MAX(Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+WHERE Product_Service = 'Application Hosting';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table
+- No joins detected.
+[Measure Usage]
+- Aggregation function(s): max
+- Aggregation expression(s): MAX(Transaction_DATE)
+- Measure type(s): none detected
+- Sign convention(s): none detected
+[Object Scope]
+- No schema-grounded account type, transaction type, or entity scope filter was detected.
+[Temporal Scope]
+- No schema-grounded temporal filter was detected.
+[Applied Non-Temporal Filters]
+- `Product_Service = 'Application Hosting'` | context: semantic_roles=product_service_identifier; measure_types=categorical; entity_scopes=product_service
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: real_8_booksql_070876
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+When was the last time we sold Mobile Device
+
+SQL:
+SELECT MAX(master_txn_table.Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+JOIN products ON master_txn_table.Product_Service = products.Product_Service
+WHERE products.Product_Service = 'Mobile Device';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table, products
+- Join(s):
+  - joined `products` on `master_txn_table.Product_Service = products.Product_Service`
+[Measure Usage]
+- Aggregation function(s): max
+- Aggregation expression(s): MAX(master_txn_table.Transaction_DATE)
+- Measure type(s): none detected
+- Sign convention(s): none detected
+[Object Scope]
+- No schema-grounded account type, transaction type, or entity scope filter was detected.
+[Temporal Scope]
+- No schema-grounded temporal filter was detected.
+[Applied Non-Temporal Filters]
+- `products.Product_Service = 'Mobile Device'` | context: semantic_roles=product_service_identifier; measure_types=categorical; entity_scopes=product_service
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: real_9_booksql_070882
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+How many Bedding did we sell to Megan Snyder This year?
+
+SQL:
+SELECT COUNT(*) 
+FROM master_txn_table 
+JOIN customers ON master_txn_table.Customers = customers.customer_name 
+WHERE customers.customer_full_name = 'Megan Snyder' 
+  AND master_txn_table.Product_Service = 'Bedding' 
+  AND master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-12-31';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table, customers
+- Join(s):
+  - joined `customers` on `master_txn_table.Customers = customers.customer_name`
+[Measure Usage]
+- Aggregation function(s): count
+- Aggregation expression(s): COUNT(*)
+- Measure type(s): none detected
+- Sign convention(s): none detected
+[Object Scope]
+- Entity scope(s): customer
+- Entity filter value(s): megan snyder
+[Temporal Scope]
+- Date role(s) used for filtering: transaction_date
+- Date filter condition(s):
+  - `master_txn_table.Transaction_DATE BETWEEN '2023-01-01' AND '2023-12-31'`
+[Applied Non-Temporal Filters]
+- `customers.customer_full_name = 'Megan Snyder'` | context: semantic_roles=entity_identifier; measure_types=categorical; entity_scopes=customer
+- `master_txn_table.Product_Service = 'Bedding'` | context: semantic_roles=product_service_identifier; measure_types=categorical; entity_scopes=product_service
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: real_10_booksql_070885
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+When was the last time we sold Rail support
+
+SQL:
+SELECT MAX(Transaction_DATE) AS Last_Sale_Date
+FROM master_txn_table
+WHERE Product_Service = 'Rail support';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table
+- No joins detected.
+[Measure Usage]
+- Aggregation function(s): max
+- Aggregation expression(s): MAX(Transaction_DATE)
+- Measure type(s): none detected
+- Sign convention(s): none detected
+[Object Scope]
+- No schema-grounded account type, transaction type, or entity scope filter was detected.
+[Temporal Scope]
+- No schema-grounded temporal filter was detected.
+[Applied Non-Temporal Filters]
+- `Product_Service = 'Rail support'` | context: semantic_roles=product_service_identifier; measure_types=categorical; entity_scopes=product_service
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+

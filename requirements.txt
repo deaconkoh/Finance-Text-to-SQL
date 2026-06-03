@@ -5,3 +5,4 @@ tqdm
 mlx-lm
 llama-cpp-python
 pytest
+sqlglot

@@ -356,6 +356,13 @@ def parse_args() -> argparse.Namespace:
         default=512,
         help="llama.cpp prompt processing batch size.",
     )
+    
+    parser.add_argument(
+        "--question-ids",
+        nargs="+",
+        default=None,
+        help="Optional list of specific question_ids to run.",
+    )
 
     return parser.parse_args()
 
@@ -488,6 +495,11 @@ def load_inference_records(args: argparse.Namespace) -> list[dict[str, Any]]:
             f"No BookSQL records loaded for split '{args.split}'. "
             "Check the split name and data source."
         )
+        
+    if args.question_ids:
+        target_ids = set(args.question_ids)
+        records = [r for r in records if r.get("question_id") in target_ids]
+        print(f"Filtered to {len(records)} specific question IDs.")
 
     if args.limit is not None:
         if args.limit <= 0:

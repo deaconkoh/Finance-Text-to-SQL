@@ -1,190 +1,214 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, asdict
 from typing import Any
 
-from .schema_loader import SchemaAnnotationStore
-from .sql_parser import AggregationRef, ColumnRef, FilterRef, OrderByRef, ParsedSQL
+from src.finverisql.schema_loader import SchemaAnnotationStore, normalise_value
+from src.finverisql.sql_parser import AggregationRef, ColumnRef, FilterRef, ParsedSQL
 
 
-# Note:
-# These dataclasses use list fields for JSON-friendly output.
-# They are treated as immutable by convention after construction.
+ACCOUNT_TYPE_ROLE = "account_type_classifier"
+TRANSACTION_TYPE_ROLE = "transaction_type_classifier"
+ENTITY_IDENTIFIER_ROLE = "entity_identifier"
+FINANCIAL_MEASURE_ROLE = "financial_measure"
+
+DATE_ROLES = {
+    "transaction_date",
+    "due_date",
+    "system_created_date",
+    "date_field",
+}
 
 
-@dataclass(frozen=True)
+@dataclass
 class AnnotatedColumnUse:
-    """
-    A SQL column reference enriched with schema annotation.
-
-    source examples:
-    - selected_column
-    - aggregation
-    - filter
-    - group_by
-    - order_by
-    """
-
     source: str
-    column: str
+    column: str | None
     table: str | None
+    expression: str | None
+    function: str | None
+    operator: str | None
+    values: list[Any]
     annotations: list[dict[str, Any]]
-    func: str | None = None
-    operator: str | None = None
-    values: list[str] | None = None
-    expression: str | None = None
+    concepts: list[str]
+    is_ambiguous: bool
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
-@dataclass(frozen=True)
+@dataclass
 class ObjectScopeSemantics:
-    """
-    Object-level scope detected from SQL filters.
-
-    This supports D1:
-    - Does SQL restrict account_type?
-    - Does SQL restrict transaction_type?
-    - Does SQL restrict customer/vendor/employee/entity?
-    """
-
     has_account_type_filter: bool
     account_type_values: list[str]
+    account_type_concepts: list[str]
+
     has_transaction_type_filter: bool
     transaction_type_values: list[str]
+    transaction_type_concepts: list[str]
+
     entity_filter_columns: list[str]
     entity_filter_values: list[str]
+    entity_scopes_detected: list[str]
+
+    ambiguous_filter_columns: list[str]
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
-@dataclass(frozen=True)
+@dataclass
 class MeasureSemantics:
-    """
-    Measure usage detected from selected and aggregated columns.
-
-    This supports D2:
-    - Does SQL aggregate debit?
-    - Does SQL aggregate credit?
-    - Does SQL aggregate amount?
-    - Does SQL use balance/open_balance?
-    """
-
     aggregated_columns: list[AnnotatedColumnUse]
     selected_columns: list[AnnotatedColumnUse]
-    aggregated_column_names: list[str]
     aggregation_functions: list[str]
+    measure_types: list[str]
+    sign_conventions: list[str]
+    ambiguous_measure_columns: list[str]
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "aggregated_columns": [
-                item.to_dict() for item in self.aggregated_columns
-            ],
-            "selected_columns": [
-                item.to_dict() for item in self.selected_columns
-            ],
-            "aggregated_column_names": self.aggregated_column_names,
+            "aggregated_columns": [item.to_dict() for item in self.aggregated_columns],
+            "selected_columns": [item.to_dict() for item in self.selected_columns],
             "aggregation_functions": self.aggregation_functions,
+            "measure_types": self.measure_types,
+            "sign_conventions": self.sign_conventions,
+            "ambiguous_measure_columns": self.ambiguous_measure_columns,
         }
+        
 
-
-@dataclass(frozen=True)
-class LogicSemantics:
-    """
-    SQL logic detected from parsed structure.
-
-    This supports D3:
-    - GROUP BY
-    - ORDER BY
-    - LIMIT
-    - date conditions
-    """
-
-    group_by_columns: list[AnnotatedColumnUse]
-    order_by_columns: list[AnnotatedColumnUse]
-    limit: int | None
-    date_conditions: list[str]
+@dataclass
+class AnnotatedFilterCondition:
+    expression: str
+    operator: str | None
+    values: list[Any]
+    columns: list[AnnotatedColumnUse]
+    is_ambiguous: bool
+    semantic_roles: list[str]
+    measure_types: list[str]
+    sign_conventions: list[str]
+    entity_scopes: list[str]
+    concepts: list[str]
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "group_by_columns": [
-                item.to_dict() for item in self.group_by_columns
-            ],
-            "order_by_columns": [
-                item.to_dict() for item in self.order_by_columns
-            ],
+            "expression": self.expression,
+            "operator": self.operator,
+            "values": self.values,
+            "columns": [col.to_dict() for col in self.columns],
+            "is_ambiguous": self.is_ambiguous,
+            "semantic_roles": self.semantic_roles,
+            "measure_types": self.measure_types,
+            "sign_conventions": self.sign_conventions,
+            "entity_scopes": self.entity_scopes,
+            "concepts": self.concepts,
+        }
+
+@dataclass
+class LogicSemantics:
+    group_by_columns: list[AnnotatedColumnUse]
+    order_by_expressions: list[str]
+    limit: int | None
+    date_conditions: list[AnnotatedFilterCondition]
+    temporal_roles: list[str]
+    filter_conditions: list[AnnotatedFilterCondition]  # NEW ADDITION
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "group_by_columns": [item.to_dict() for item in self.group_by_columns],
+            "order_by_expressions": self.order_by_expressions,
             "limit": self.limit,
-            "date_conditions": self.date_conditions,
+            "date_conditions": [item.to_dict() for item in self.date_conditions],
+            "temporal_roles": self.temporal_roles,
+            "filter_conditions": [item.to_dict() for item in self.filter_conditions],
         }
 
 
-@dataclass(frozen=True)
+@dataclass
 class SQLFinancialSemantics:
-    """
-    Financial meaning of the predicted SQL.
-
-    This is the actual SQL side used by FinVeriSQL.
-    It should be compared against expected requirements from the user intent.
-    """
-
     tables: list[str]
+    aliases: dict[str, str]
     joins: list[dict[str, Any]]
     object_scope: ObjectScopeSemantics
     measure_usage: MeasureSemantics
     logic: LogicSemantics
     parse_error: str | None = None
+    unsupported_lineage: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "tables": self.tables,
+            "aliases": self.aliases,
             "joins": self.joins,
             "object_scope": self.object_scope.to_dict(),
             "measure_usage": self.measure_usage.to_dict(),
             "logic": self.logic.to_dict(),
             "parse_error": self.parse_error,
+            "unsupported_lineage": self.unsupported_lineage,
         }
 
 
-def get_annotation_attr(
+def _unique(values: list[Any]) -> list[Any]:
+    result = []
+    seen = set()
+
+    for value in values:
+        key = str(value)
+
+        if key not in seen:
+            seen.add(key)
+            result.append(value)
+
+    return result
+
+
+def _normalise_filter_values(values: list[Any]) -> list[str]:
+    return [
+        normalise_value(value)
+        for value in values
+        if normalise_value(value)
+    ]
+
+
+def _get_annotation_attr(
     annotations: list[dict[str, Any]],
     key: str,
     default: Any = None,
 ) -> Any:
-    """
-    Safely retrieve an annotation attribute.
+    for annotation in annotations or []:
+        value = annotation.get(key)
 
-    Use this in verifier rules instead of direct dictionary access.
-
-    Example:
-        sign_convention = get_annotation_attr(
-            item.annotations,
-            "sign_convention",
-        )
-    """
-    for annotation in annotations:
-        if key in annotation:
-            return annotation[key]
+        if value not in (None, "", [], "none"):
+            return value
 
     return default
 
 
-def annotate_column(
-    column: str,
-    table: str | None,
-    parsed_sql: ParsedSQL,
+def _get_all_annotation_attrs(
+    annotations: list[dict[str, Any]],
+    key: str,
+) -> list[str]:
+    values = []
+
+    for annotation in annotations or []:
+        value = annotation.get(key)
+
+        if value not in (None, "", [], "none"):
+            values.append(str(value))
+
+    return _unique(values)
+
+
+def _is_ambiguous(annotations: list[dict[str, Any]]) -> bool:
+    return any(annotation.get("is_ambiguous") for annotation in annotations or [])
+
+
+def _resolve_annotations(
     schema_store: SchemaAnnotationStore,
+    parsed_sql: ParsedSQL,
+    column: str | None,
+    table: str | None,
 ) -> list[dict[str, Any]]:
-    """
-    Resolve a column reference to schema annotations.
-
-    If table is known:
-        use direct lookup.
-
-    If table is unknown:
-        search candidate tables used in the SQL first.
-    """
     return schema_store.annotate_column_reference(
         column=column,
         table=table,
@@ -192,241 +216,231 @@ def annotate_column(
     )
 
 
-def annotated_column_use_from_column_ref(
-    source: str,
-    column_ref: ColumnRef,
-    parsed_sql: ParsedSQL,
+def _resolve_value_concepts(
     schema_store: SchemaAnnotationStore,
+    annotations: list[dict[str, Any]],
+    values: list[Any],
+) -> list[str]:
+    concepts: list[str] = []
+
+    for annotation in annotations:
+        for value in values:
+            concept = schema_store.resolve_value_concept(annotation, value)
+
+            if concept:
+                concepts.append(str(concept))
+
+    return _unique(concepts)
+
+
+def _make_annotated_column_use(
+    source: str,
+    column: str | None,
+    table: str | None,
+    expression: str | None,
+    function: str | None,
+    operator: str | None,
+    values: list[Any],
+    annotations: list[dict[str, Any]],
+    concepts: list[str] | None = None,
 ) -> AnnotatedColumnUse:
-    annotations = annotate_column(
-        column=column_ref.column,
-        table=column_ref.table,
-        parsed_sql=parsed_sql,
-        schema_store=schema_store,
+    return AnnotatedColumnUse(
+        source=source,
+        column=column,
+        table=table,
+        expression=expression,
+        function=function,
+        operator=operator,
+        values=values,
+        annotations=annotations,
+        concepts=concepts or [],
+        is_ambiguous=_is_ambiguous(annotations),
     )
 
-    return AnnotatedColumnUse(
+def build_object_scope_semantics(
+    parsed_sql: ParsedSQL,
+    schema_store: SchemaAnnotationStore,
+) -> ObjectScopeSemantics:
+    account_type_values, account_type_concepts = [], []
+    transaction_type_values, transaction_type_concepts = [], []
+    entity_filter_columns, entity_filter_values, entity_scopes_detected = [], [], []
+    ambiguous_filter_columns = []
+
+    for filter_ref in parsed_sql.filters:
+        for col_ref in filter_ref.columns:
+            annotations = _resolve_annotations(
+                schema_store=schema_store,
+                parsed_sql=parsed_sql,
+                column=col_ref.column,
+                table=col_ref.table,
+            )
+
+            if not annotations:
+                continue
+
+            # AMBIGUITY GUARD
+            if _is_ambiguous(annotations):
+                if col_ref.column:
+                    ambiguous_filter_columns.append(col_ref.column)
+                continue  # Don't process ambiguous semantics.
+
+            semantic_roles = _get_all_annotation_attrs(annotations, "semantic_role")
+            entity_scopes = _get_all_annotation_attrs(annotations, "entity_scope")
+            values = _normalise_filter_values(filter_ref.values)
+            concepts = _resolve_value_concepts(schema_store, annotations, values)
+
+            if ACCOUNT_TYPE_ROLE in semantic_roles:
+                account_type_values.extend(values)
+                account_type_concepts.extend(concepts)
+
+            elif TRANSACTION_TYPE_ROLE in semantic_roles:
+                transaction_type_values.extend(values)
+                transaction_type_concepts.extend(concepts)
+
+            elif ENTITY_IDENTIFIER_ROLE in semantic_roles:
+                if col_ref.column:
+                    entity_filter_columns.append(col_ref.column)
+                entity_filter_values.extend(values)
+                entity_scopes_detected.extend(entity_scopes)
+
+    return ObjectScopeSemantics(
+        has_account_type_filter=bool(account_type_values),
+        account_type_values=sorted(set(account_type_values)),
+        account_type_concepts=sorted(set(account_type_concepts)),
+        has_transaction_type_filter=bool(transaction_type_values),
+        transaction_type_values=sorted(set(transaction_type_values)),
+        transaction_type_concepts=sorted(set(transaction_type_concepts)),
+        entity_filter_columns=sorted(set(entity_filter_columns)),
+        entity_filter_values=sorted(set(entity_filter_values)),
+        entity_scopes_detected=sorted(set(entity_scopes_detected)),
+        ambiguous_filter_columns=sorted(set(ambiguous_filter_columns)),
+    )
+
+def _column_use_from_column_ref(
+    parsed_sql: ParsedSQL,
+    schema_store: SchemaAnnotationStore,
+    column_ref: ColumnRef,
+    source: str,
+    expression: str | None = None,
+    function: str | None = None,
+    operator: str | None = None,
+    values: list[Any] | None = None,
+) -> AnnotatedColumnUse:
+    annotations = _resolve_annotations(
+        schema_store=schema_store,
+        parsed_sql=parsed_sql,
+        column=column_ref.column,
+        table=column_ref.table,
+    )
+
+    return _make_annotated_column_use(
         source=source,
         column=column_ref.column,
         table=column_ref.table,
+        expression=expression,
+        function=function,
+        operator=operator,
+        values=values or [],
         annotations=annotations,
     )
 
 
-def annotated_column_use_from_aggregation(
-    aggregation: AggregationRef,
+def _column_uses_from_aggregation(
     parsed_sql: ParsedSQL,
     schema_store: SchemaAnnotationStore,
-) -> AnnotatedColumnUse:
-    annotations = []
+    aggregation_ref: AggregationRef,
+) -> list[AnnotatedColumnUse]:
+    if not aggregation_ref.columns:
+        return [
+            _make_annotated_column_use(
+                source="aggregation",
+                column=None,
+                table=None,
+                expression=aggregation_ref.expression,
+                function=aggregation_ref.func,
+                operator=None,
+                values=[],
+                annotations=[],
+            )
+        ]
 
-    if aggregation.column is not None:
-        annotations = annotate_column(
-            column=aggregation.column,
-            table=aggregation.table,
+    return [
+        _column_use_from_column_ref(
             parsed_sql=parsed_sql,
             schema_store=schema_store,
+            column_ref=column_ref,
+            source="aggregation",
+            expression=aggregation_ref.expression,
+            function=aggregation_ref.func,
         )
-
-    return AnnotatedColumnUse(
-        source="aggregation",
-        column=aggregation.column or "*",
-        table=aggregation.table,
-        annotations=annotations,
-        func=aggregation.func,
-        expression=aggregation.expression,
-    )
-
-
-def annotated_column_use_from_filter(
-    filter_ref: FilterRef,
-    parsed_sql: ParsedSQL,
-    schema_store: SchemaAnnotationStore,
-) -> AnnotatedColumnUse:
-    annotations = annotate_column(
-        column=filter_ref.column,
-        table=filter_ref.table,
-        parsed_sql=parsed_sql,
-        schema_store=schema_store,
-    )
-
-    return AnnotatedColumnUse(
-        source="filter",
-        column=filter_ref.column,
-        table=filter_ref.table,
-        annotations=annotations,
-        operator=filter_ref.operator,
-        values=filter_ref.values or [],
-        expression=filter_ref.expression,
-    )
-
-
-def annotated_column_use_from_order_by(
-    order_by: OrderByRef,
-    parsed_sql: ParsedSQL,
-    schema_store: SchemaAnnotationStore,
-) -> AnnotatedColumnUse:
-    annotations = []
-
-    if order_by.column is not None:
-        annotations = annotate_column(
-            column=order_by.column,
-            table=order_by.table,
-            parsed_sql=parsed_sql,
-            schema_store=schema_store,
-        )
-
-    return AnnotatedColumnUse(
-        source="order_by",
-        column=order_by.column or "",
-        table=order_by.table,
-        annotations=annotations,
-        expression=order_by.expression,
-    )
-
-
-def normalise_values(values: list[str] | None) -> list[str]:
-    if not values:
-        return []
-
-    cleaned_values = []
-
-    for value in values:
-        cleaned = str(value).strip()
-
-        if cleaned and cleaned not in cleaned_values:
-            cleaned_values.append(cleaned)
-
-    return cleaned_values
-
-
-def get_filter_values(
-    filters: list[FilterRef],
-    column_names: set[str],
-) -> list[str]:
-    values: list[str] = []
-
-    normalised_column_names = {column.lower() for column in column_names}
-
-    for filter_ref in filters:
-        if filter_ref.column.lower() in normalised_column_names:
-            for value in normalise_values(filter_ref.values):
-                if value not in values:
-                    values.append(value)
-
-    return values
-
-
-def has_filter(
-    filters: list[FilterRef],
-    column_names: set[str],
-) -> bool:
-    normalised_column_names = {column.lower() for column in column_names}
-
-    return any(
-        filter_ref.column.lower() in normalised_column_names
-        for filter_ref in filters
-    )
-
-
-def build_object_scope_semantics(parsed_sql: ParsedSQL) -> ObjectScopeSemantics:
-    account_type_columns = {"account_type", "accounttype"}
-
-    transaction_type_columns = {"transaction_type", "transactiontype"}
-
-    entity_columns = {
-        "customer",
-        "customers",
-        "customer_name",
-        "customer_full_name",
-        "vendor",
-        "vendors",
-        "vendor_name",
-        "supplier",
-        "supplier_name",
-        "employee",
-        "employee_name",
-    }
-
-    account_type_values = get_filter_values(
-        parsed_sql.filters,
-        account_type_columns,
-    )
-
-    transaction_type_values = get_filter_values(
-        parsed_sql.filters,
-        transaction_type_columns,
-    )
-
-    entity_filter_columns: list[str] = []
-    entity_filter_values: list[str] = []
-
-    for filter_ref in parsed_sql.filters:
-        column_name = filter_ref.column.lower()
-
-        if column_name in entity_columns:
-            if column_name not in entity_filter_columns:
-                entity_filter_columns.append(column_name)
-
-            for value in normalise_values(filter_ref.values):
-                if value not in entity_filter_values:
-                    entity_filter_values.append(value)
-
-    return ObjectScopeSemantics(
-        has_account_type_filter=has_filter(
-            parsed_sql.filters,
-            account_type_columns,
-        ),
-        account_type_values=account_type_values,
-        has_transaction_type_filter=has_filter(
-            parsed_sql.filters,
-            transaction_type_columns,
-        ),
-        transaction_type_values=transaction_type_values,
-        entity_filter_columns=entity_filter_columns,
-        entity_filter_values=entity_filter_values,
-    )
+        for column_ref in aggregation_ref.columns
+    ]
 
 
 def build_measure_semantics(
     parsed_sql: ParsedSQL,
     schema_store: SchemaAnnotationStore,
 ) -> MeasureSemantics:
-    aggregated_columns = [
-        annotated_column_use_from_aggregation(
-            aggregation=aggregation,
-            parsed_sql=parsed_sql,
-            schema_store=schema_store,
+    aggregated_columns: list[AnnotatedColumnUse] = []
+
+    for aggregation_ref in parsed_sql.aggregations:
+        aggregated_columns.extend(
+            _column_uses_from_aggregation(
+                parsed_sql=parsed_sql,
+                schema_store=schema_store,
+                aggregation_ref=aggregation_ref,
+            )
         )
-        for aggregation in parsed_sql.aggregations
-    ]
 
     selected_columns = [
-        annotated_column_use_from_column_ref(
-            source="selected_column",
-            column_ref=column_ref,
+        _column_use_from_column_ref(
             parsed_sql=parsed_sql,
             schema_store=schema_store,
+            column_ref=column_ref,
+            source="select",
         )
         for column_ref in parsed_sql.selected_columns
     ]
 
-    aggregated_column_names: list[str] = []
-    aggregation_functions: list[str] = []
+    all_column_uses = aggregated_columns + selected_columns
 
-    for item in aggregated_columns:
-        if item.column not in aggregated_column_names:
-            aggregated_column_names.append(item.column)
+    aggregation_functions = _unique([
+        aggregation_ref.func
+        for aggregation_ref in parsed_sql.aggregations
+    ])
 
-        if item.func and item.func not in aggregation_functions:
-            aggregation_functions.append(item.func)
+    measure_types: list[str] = []
+    sign_conventions: list[str] = []
+    ambiguous_measure_columns: list[str] = []
+
+    for column_use in all_column_uses:
+        if column_use.is_ambiguous:
+            if column_use.column:
+                ambiguous_measure_columns.append(column_use.column)
+            continue
+
+        semantic_roles = _get_all_annotation_attrs(column_use.annotations, "semantic_role")
+
+        if FINANCIAL_MEASURE_ROLE in semantic_roles:
+            measure_types.extend(
+                _get_all_annotation_attrs(column_use.annotations, "measure_type")
+            )
+            sign_conventions.extend(
+                _get_all_annotation_attrs(column_use.annotations, "sign_convention")
+            )
 
     return MeasureSemantics(
         aggregated_columns=aggregated_columns,
         selected_columns=selected_columns,
-        aggregated_column_names=aggregated_column_names,
         aggregation_functions=aggregation_functions,
+        measure_types=sorted(set(measure_types)),
+        sign_conventions=sorted(set(sign_conventions)),
+        ambiguous_measure_columns=sorted(set(ambiguous_measure_columns)),
     )
+
+
+def _is_temporal_annotation(annotation: dict[str, Any]) -> bool:
+    return annotation.get("semantic_role") in DATE_ROLES
 
 
 def build_logic_semantics(
@@ -434,91 +448,178 @@ def build_logic_semantics(
     schema_store: SchemaAnnotationStore,
 ) -> LogicSemantics:
     group_by_columns = [
-        annotated_column_use_from_column_ref(
-            source="group_by",
-            column_ref=column_ref,
+        _column_use_from_column_ref(
             parsed_sql=parsed_sql,
             schema_store=schema_store,
+            column_ref=column_ref,
+            source="group_by",
         )
         for column_ref in parsed_sql.group_by
     ]
 
-    order_by_columns = [
-        annotated_column_use_from_order_by(
-            order_by=order_by,
-            parsed_sql=parsed_sql,
-            schema_store=schema_store,
+    date_conditions: list[AnnotatedFilterCondition] = []
+    temporal_roles: list[str] = []
+    filter_conditions: list[AnnotatedFilterCondition] = []
+    seen_date_condition_keys = set()
+
+    for filter_ref in parsed_sql.filters:
+        annotated_columns_in_filter: list[AnnotatedColumnUse] = []
+        is_filter_ambiguous = False
+        is_date_condition = False
+
+        roles: list[str] = []
+        measures: list[str] = []
+        signs: list[str] = []
+        scopes: list[str] = []
+        concepts: list[str] = []
+
+        for col_ref in filter_ref.columns:
+            annotations = _resolve_annotations(
+                schema_store=schema_store,
+                parsed_sql=parsed_sql,
+                column=col_ref.column,
+                table=col_ref.table,
+            )
+
+            if not annotations:
+                continue
+
+            is_col_ambiguous = _is_ambiguous(annotations)
+
+            col_concepts = [] if is_col_ambiguous else _resolve_value_concepts(
+                schema_store=schema_store,
+                annotations=annotations,
+                values=filter_ref.values,
+            )
+
+            col_use = _make_annotated_column_use(
+                source="filter",
+                column=col_ref.column,
+                table=col_ref.table,
+                expression=filter_ref.expression,
+                function=None,
+                operator=filter_ref.operator,
+                values=filter_ref.values,
+                annotations=annotations,
+                concepts=col_concepts,
+            )
+
+            annotated_columns_in_filter.append(col_use)
+
+            if is_col_ambiguous:
+                is_filter_ambiguous = True
+                continue
+
+            roles.extend(_get_all_annotation_attrs(annotations, "semantic_role"))
+            measures.extend(_get_all_annotation_attrs(annotations, "measure_type"))
+            signs.extend(_get_all_annotation_attrs(annotations, "sign_convention"))
+            scopes.extend(_get_all_annotation_attrs(annotations, "entity_scope"))
+            concepts.extend(col_concepts)
+
+            if any(_is_temporal_annotation(annotation) for annotation in annotations):
+                is_date_condition = True
+                temporal_roles.extend(
+                    _get_all_annotation_attrs(annotations, "semantic_role")
+                )
+
+        condition = AnnotatedFilterCondition(
+            expression=filter_ref.expression,
+            operator=filter_ref.operator,
+            values=filter_ref.values,
+            columns=annotated_columns_in_filter,
+            is_ambiguous=is_filter_ambiguous,
+            semantic_roles=sorted(set(roles)),
+            measure_types=sorted(set(measures)),
+            sign_conventions=sorted(set(signs)),
+            entity_scopes=sorted(set(scopes)),
+            concepts=sorted(set(concepts)),
         )
-        for order_by in parsed_sql.order_by
-    ]
+
+        filter_conditions.append(condition)
+
+        date_key = (condition.expression, condition.operator)
+
+        if is_date_condition and date_key not in seen_date_condition_keys:
+            date_conditions.append(condition)
+            seen_date_condition_keys.add(date_key)
 
     return LogicSemantics(
         group_by_columns=group_by_columns,
-        order_by_columns=order_by_columns,
+        order_by_expressions=parsed_sql.order_by,
         limit=parsed_sql.limit,
-        date_conditions=parsed_sql.date_conditions,
+        date_conditions=date_conditions,
+        temporal_roles=sorted(set(temporal_roles)),
+        filter_conditions=filter_conditions,
     )
-
-
-def build_empty_object_scope_semantics() -> ObjectScopeSemantics:
-    return ObjectScopeSemantics(
-        has_account_type_filter=False,
-        account_type_values=[],
-        has_transaction_type_filter=False,
-        transaction_type_values=[],
-        entity_filter_columns=[],
-        entity_filter_values=[],
-    )
-
-
-def build_empty_measure_semantics() -> MeasureSemantics:
-    return MeasureSemantics(
-        aggregated_columns=[],
-        selected_columns=[],
-        aggregated_column_names=[],
-        aggregation_functions=[],
-    )
-
-
-def build_empty_logic_semantics() -> LogicSemantics:
-    return LogicSemantics(
-        group_by_columns=[],
-        order_by_columns=[],
-        limit=None,
-        date_conditions=[],
-    )
-
-
+    
 def build_sql_financial_semantics(
     parsed_sql: ParsedSQL,
     schema_store: SchemaAnnotationStore,
 ) -> SQLFinancialSemantics:
-    """
-    Build the actual SQL financial semantics used by FinVeriSQL.
-
-    This maps parsed SQL components to their financial meaning using schema
-    annotations. The output is the actual SQL side that D1/D2/D3 compare
-    against expected requirements from the user intent.
-    """
     if parsed_sql.parse_error:
+        empty_object_scope = ObjectScopeSemantics(
+            has_account_type_filter=False,
+            account_type_values=[],
+            account_type_concepts=[],
+            has_transaction_type_filter=False,
+            transaction_type_values=[],
+            transaction_type_concepts=[],
+            entity_filter_columns=[],
+            entity_filter_values=[],
+            entity_scopes_detected=[],
+            ambiguous_filter_columns=[],
+        )
+
+        empty_measure_usage = MeasureSemantics(
+            aggregated_columns=[],
+            selected_columns=[],
+            aggregation_functions=[],
+            measure_types=[],
+            sign_conventions=[],
+            ambiguous_measure_columns=[],
+        )
+
+        empty_logic = LogicSemantics(
+            group_by_columns=[],
+            order_by_expressions=[],
+            limit=None,
+            date_conditions=[],
+            temporal_roles=[],
+            filter_conditions=[],
+        )
+
         return SQLFinancialSemantics(
-            tables=parsed_sql.tables,
-            joins=[join.to_dict() for join in parsed_sql.joins],
-            object_scope=build_empty_object_scope_semantics(),
-            measure_usage=build_empty_measure_semantics(),
-            logic=build_empty_logic_semantics(),
+            tables=[],
+            aliases={},
+            joins=[],
+            object_scope=empty_object_scope,
+            measure_usage=empty_measure_usage,
+            logic=empty_logic,
             parse_error=parsed_sql.parse_error,
         )
 
-    object_scope = build_object_scope_semantics(parsed_sql)
-    measure = build_measure_semantics(parsed_sql, schema_store)
-    logic = build_logic_semantics(parsed_sql, schema_store)
+    object_scope = build_object_scope_semantics(
+        parsed_sql=parsed_sql,
+        schema_store=schema_store,
+    )
+
+    measure_usage = build_measure_semantics(
+        parsed_sql=parsed_sql,
+        schema_store=schema_store,
+    )
+
+    logic = build_logic_semantics(
+        parsed_sql=parsed_sql,
+        schema_store=schema_store,
+    )
 
     return SQLFinancialSemantics(
         tables=parsed_sql.tables,
+        aliases=parsed_sql.aliases,
         joins=[join.to_dict() for join in parsed_sql.joins],
         object_scope=object_scope,
-        measure_usage=measure,
+        measure_usage=measure_usage,
         logic=logic,
         parse_error=None,
+        unsupported_lineage=parsed_sql.unsupported_lineage, 
     )

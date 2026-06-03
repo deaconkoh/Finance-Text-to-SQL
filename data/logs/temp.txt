@@ -1,0 +1,154 @@
+
+########################################################################################################################
+REAL BASELINE OUTPUT DECOMPILER TESTS
+########################################################################################################################
+Input file: data/outputs/fewshot_examples/selected_fewshot_source_1780505227.jsonl
+Limit: 4
+Evaluation group filter: none
+
+========================================================================================================================
+TEST: real_1_booksql_000036
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+How many invoices are still oustanding for Danielle Lara as of This month?
+
+SQL:
+SELECT COUNT(DISTINCT transaction_id) 
+FROM master_txn_table 
+WHERE Customers = 'Danielle Lara' 
+  AND Transaction_TYPE = 'invoice' 
+  AND AR_paid = 'No' 
+  AND Transaction_DATE BETWEEN date('now', 'start of month') AND date('now');
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table
+- No joins detected.
+[Measure Usage]
+- Aggregation function(s): count
+- Aggregation expression(s): COUNT(DISTINCT transaction_id)
+- Measure type(s): none detected
+- Sign convention(s): none detected
+[Object Scope]
+- Transaction concept(s): invoice
+- Transaction type value(s): invoice
+- Entity scope(s): customer
+- Entity filter value(s): danielle lara
+[Temporal Scope]
+- Date role(s) used for filtering: transaction_date
+- Date filter condition(s):
+  - `Transaction_DATE BETWEEN DATE('now', 'start of month') AND DATE('now')`
+[Applied Non-Temporal Filters]
+- `AR_paid = 'No'` | context: concepts=unpaid; semantic_roles=payment_status_flag; measure_types=categorical; entity_scopes=transaction
+- `Customers = 'Danielle Lara'` | context: semantic_roles=entity_identifier; measure_types=categorical; entity_scopes=customer
+- `Transaction_TYPE = 'invoice'` | context: concepts=invoice; semantic_roles=transaction_type_classifier; measure_types=categorical; entity_scopes=transaction
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: real_2_booksql_000021
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+Show the minimum, average, maximum order quantity of all invoices.
+
+SQL:
+SELECT min(Quantity) AS min_quantity, avg(Quantity) AS avg_quantity, max(Quantity) AS max_quantity FROM master_txn_table WHERE Transaction_TYPE = 'invoice';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table
+- No joins detected.
+[Measure Usage]
+- Aggregation function(s): average, max, min
+- Aggregation expression(s): AVG(Quantity), MAX(Quantity), MIN(Quantity)
+- Measure type(s): none detected
+- Sign convention(s): none detected
+[Object Scope]
+- Transaction concept(s): invoice
+- Transaction type value(s): invoice
+[Temporal Scope]
+- No schema-grounded WHERE date filter was detected.
+[Applied Non-Temporal Filters]
+- `Transaction_TYPE = 'invoice'` | context: concepts=invoice; semantic_roles=transaction_type_classifier; measure_types=categorical; entity_scopes=transaction
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: real_3_booksql_000046
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+When was the first time we received bill for Drilling oil and gas wells?
+
+SQL:
+SELECT MIN(transaction_date) AS first_bill_date
+FROM master_txn_table
+WHERE Product_Service = 'Drilling oil and gas wells' AND Transaction_TYPE = 'Bill';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table
+- No joins detected.
+[Measure Usage]
+- Aggregation function(s): min
+- Aggregation expression(s): MIN(transaction_date)
+- Measure type(s): none detected
+- Sign convention(s): none detected
+[Object Scope]
+- Transaction concept(s): bill
+- Transaction type value(s): bill
+[Temporal Scope]
+- No schema-grounded WHERE date filter was detected.
+[Applied Non-Temporal Filters]
+- `Product_Service = 'Drilling oil and gas wells'` | context: semantic_roles=product_service_identifier; measure_types=categorical; entity_scopes=product_service
+- `Transaction_TYPE = 'Bill'` | context: concepts=bill; semantic_roles=transaction_type_classifier; measure_types=categorical; entity_scopes=transaction
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
+========================================================================================================================
+TEST: real_4_booksql_000843
+------------------------------------------------------------------------------------------------------------------------
+QUESTION:
+What are my AP This week to date?
+
+SQL:
+SELECT DISTINCT transaction_id, amount 
+FROM master_txn_table 
+WHERE transaction_date BETWEEN date('now', 'weekday 0', '-7 days') AND date('now', 'weekday 0') 
+  AND AP_paid = 'Yes';
+
+DECOMPILED EXECUTION PROFILE:
+[Status] MAPPED_WITHOUT_AMBIGUITY
+The candidate SQL was parsed and mapped to schema-grounded semantic annotations without detected column ambiguity.
+[Data Sources]
+- Queried table(s): master_txn_table
+- No joins detected.
+[Measure Usage]
+- No aggregation detected.
+- Selected column(s): amount, transaction_id
+- Measure type(s): flow
+- Sign convention(s): gross amount with no debit/credit direction
+[Object Scope]
+- No schema-grounded account type, transaction type, or entity scope filter was detected.
+[Temporal Scope]
+- Date role(s) used for filtering: transaction_date
+- Date filter condition(s):
+  - `transaction_date BETWEEN DATE('now', 'weekday 0', '-7 days') AND DATE('now', 'weekday 0')`
+[Applied Non-Temporal Filters]
+- `AP_paid = 'Yes'` | context: concepts=paid; semantic_roles=payment_status_flag; measure_types=categorical; entity_scopes=transaction
+[Structure]
+- No GROUP BY detected.
+- No ORDER BY detected.
+- No LIMIT detected.
+
