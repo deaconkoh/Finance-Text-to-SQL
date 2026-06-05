@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any, Callable
 import urllib.request
 
+from finverisql.verifier import MaxTokensReachedError
+
 
 def build_ollama_generate_fn(
     model_name: str,
@@ -41,6 +43,12 @@ def build_ollama_generate_fn(
 
         with urllib.request.urlopen(request, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
+
+        if data.get("done_reason") == "length":
+            raise MaxTokensReachedError(
+                f"Ollama max tokens reached ({num_predict} limit). "
+                f"eval_count={data.get('eval_count')} tokens generated."
+            )
 
         message = data.get("message") or {}
         content = (message.get("content") or "").strip()
@@ -156,7 +164,7 @@ def build_verifier_generate_fn(
             num_predict=num_predict,
             timeout=timeout,
             format_json=True,
-            think=None,
+            think=False,
         )
 
     raise ValueError(f"Unsupported verifier backend inferred: {backend}")

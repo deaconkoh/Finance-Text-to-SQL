@@ -24,6 +24,9 @@ VALID_CONFIDENCE_LEVELS = {
     "low",
 }
 
+class MaxTokensReachedError(Exception):
+    """Raised when the LLM generation terminates due to hitting the max token limit."""
+    pass
 
 @dataclass
 class VerificationResult:
@@ -62,91 +65,63 @@ You are a finance-aware SQL semantic verifier.
 
 Task:
 Decide whether the DECOMPILED SQL EXECUTION PROFILE answers the USER QUESTION.
-
-You do not see raw SQL, gold SQL, execution results, evaluation labels, or database contents.
+You do not see raw SQL, gold SQL, execution results, or database contents.
 Treat the execution profile as the full meaning of the candidate SQL.
 
-Stage 1 output:
-Return only valid JSON with exactly these fields:
+Output:
+Return ONLY this JSON object — no explanation, no error classification, no repair hint:
 {{
-  "answers_question": true,
-  "ambiguous": false
+  "answers_question": true | false | null,
+  "ambiguous": true | false
 }}
 
-Rules:
-- answers_question=true only if all required dimensions in the question are satisfied by the profile.
-- answers_question=false if any required dimension is missing, mismatched, contradicted, or unsupported by the profile.
-- answers_question=null only if the question or profile is genuinely too unclear to judge.
-- ambiguous=true only when the question/profile is genuinely unclear.
-- Do not use ambiguity to avoid clear mismatches.
-- Do not classify the error type in Stage 1.
-- Do not generate a repair hint in Stage 1.
-- Do not mark true just because some filters, columns, or values overlap with the question.
-- Do not infer missing filters, joins, account scopes, transaction scopes, grouping, ordering, formulas, or measures if they are not shown in the profile.
-- Only check dimensions required by the question.
+Decision rules:
+- true: profile satisfies all main required dimensions of the question.
+- false: clear semantic mismatch or clearly wrong required dimension.
+- null: profile is incomplete or under-specified, but not clearly wrong.
+- ambiguous=true: question or profile is genuinely unclear; insufficient evidence to judge.
+- Do not reject for missing minor supporting evidence that is not required by the question.
+- However, if the missing or wrong evidence changes the financial meaning of the answer, treat it as a clear mismatch.
+- Central dimensions include the requested financial object, transaction scope, entity role, measure, time period, and computation logic.
+- Do not invent dimensions not shown in the profile; do not accept based on partial overlap alone.
 
 Financial checking guide:
-- Row count is not the same as quantity sold unless the profile clearly shows each row represents one unit.
-- Gross amount is not the same as debit-normal, credit-normal, payable, receivable, sales, or expense value.
-- Product/service scope does not automatically satisfy account/category scope.
-- A payment status flag alone does not establish the required AP/AR/account scope.
-- If the question asks for a total, payable, receivable, sales, expense, or AP/AR value, raw transaction rows are not sufficient unless transaction-level rows are explicitly requested.
-- If the question asks for invoice-level order quantity statistics, row-level quantity statistics may be insufficient.
+- Row count, quantity, gross amount, debit, credit, payable, receivable, sales, and expense are not interchangeable.
+- Product/service scope does not satisfy account/category scope.
+- A payment status flag alone does not establish AP/AR/account scope.
+- Raw transaction rows are not sufficient when the question asks for an aggregate financial measure.
+- Correct column or filter is not enough if the computation is at the wrong granularity.
 
-Few-shot examples:
+Error taxonomy (for your reference when assessing mismatches):
+- financial_object_error: wrong object, account class, transaction type, entity role, or semantic grounding of a value.
+- financial_measure_error: wrong numeric measure, sign convention, missing aggregate, or raw rows instead of a financial measure.
+- computation_logic_error: wrong aggregation level, grouping, ranking, formula, temporal logic, or output granularity.
 
-Example 1
+Examples:
+
+Example 1 — ACCEPT
 Question: How many invoices are still outstanding for Danielle Lara as of This month?
-Profile evidence:
-- COUNT(DISTINCT transaction_id)
-- transaction type: invoice
-- customer/entity value: danielle lara
-- AR_paid = No
-- transaction_date from start of current month to now
-Expected:
-{{
-  "answers_question": true,
-  "ambiguous": false
-}}
+Profile: COUNT(DISTINCT transaction_id), transaction type: invoice, customer: danielle lara, AR_paid=No, transaction_date from start of current month to now.
+Verdict: true — all required dimensions satisfied (count, invoice scope, customer filter, unpaid status, current-month period).
+{{"answers_question": true, "ambiguous": false}}
 
-Example 2
+Example 2 — REJECT (computation_logic_error)
 Question: Show the minimum, average, maximum order quantity of all invoices.
-Profile evidence:
-- MIN(Quantity), AVG(Quantity), MAX(Quantity)
-- transaction type: invoice
-- No GROUP BY detected
-- profile computes row-level quantity statistics
-Expected:
-{{
-  "answers_question": false,
-  "ambiguous": false
-}}
+Profile: MIN(Quantity), AVG(Quantity), MAX(Quantity), transaction type: invoice, no GROUP BY detected, row-level quantity statistics.
+Verdict: false — correct column and scope, but aggregation is at row level rather than the required business-level order quantity granularity.
+{{"answers_question": false, "ambiguous": false}}
 
-Example 3
+Example 3 — REJECT (financial_object_error)
 Question: When was the first time we received bill for Drilling oil and gas wells?
-Profile evidence:
-- MIN(transaction_date)
-- transaction type: bill
-- Product_Service = Drilling oil and gas wells
-Expected:
-{{
-  "answers_question": false,
-  "ambiguous": false
-}}
+Profile: MIN(transaction_date), transaction type: bill, Product_Service = Drilling oil and gas wells.
+Verdict: false — the required value is present but grounded to product/service scope; the question requires it as the financial account/object identifier.
+{{"answers_question": false, "ambiguous": false}}
 
-Example 4
+Example 4 — REJECT (financial_measure_error)
 Question: What are my AP This week to date?
-Profile evidence:
-- No aggregation detected
-- Selected columns: amount, transaction_id
-- Measure type: flow
-- Sign convention: gross amount with no debit/credit direction
-- AP_paid = Yes
-Expected:
-{{
-  "answers_question": false,
-  "ambiguous": false
-}}
+Profile: No aggregation detected, selected columns: amount, transaction_id, gross amount with no debit/credit direction, AP_paid=Yes.
+Verdict: false — returns raw rows with gross amount instead of an aggregated payable/AP measure; debit/credit direction is absent.
+{{"answers_question": false, "ambiguous": false}}
 
 Actual case:
 
@@ -208,40 +183,51 @@ Few-shot examples:
 
 Example 1 — D3 / Computation Logic Constraint
 Question: Show the minimum, average, maximum order quantity of all invoices.
+
 Profile evidence:
 - MIN(Quantity), AVG(Quantity), MAX(Quantity)
 - transaction type: invoice
 - No GROUP BY detected
-Annotation:
-Primary flagged dimension is D3 / Computation Logic Constraint.
-The issue is not the invoice filter. The issue is that the SQL computes row-level quantity statistics instead of invoice-level order quantity statistics.
+
+Dimension-level rule:
+D3 / Computation Logic Constraint covers wrong aggregation order, grouping level, unit of analysis, ranking logic, formula, comparison, temporal computation, or output granularity. A query can use the correct column and object scope but still fail if it computes the answer at the wrong level.
+
+Case application:
+The issue is not the invoice filter. The issue is that the profile computes row-level quantity statistics instead of computing the required business-level order quantity statistics. Therefore, the primary mismatch is D3.
+
 Expected:
 {{
   "mismatch_type": "computation_logic_error",
-  "mismatch_detail": "The profile applies MIN/AVG/MAX directly to row-level Quantity instead of computing invoice-level order quantities first.",
-  "repair_hint": "Aggregate quantity by invoice or transaction first, then compute MIN, AVG, and MAX over those invoice-level quantities.",
+  "mismatch_detail": "The profile applies the aggregation at the wrong granularity. It uses row-level quantity statistics instead of computing the required business-level order quantity logic.",
+  "repair_hint": "Apply the aggregation at the correct business level first, then compute the requested minimum, average, and maximum values.",
   "confidence": "high"
 }}
 
 Example 2 — D1 / Financial Object Constraint
 Question: When was the first time we received bill for Drilling oil and gas wells?
+
 Profile evidence:
 - MIN(transaction_date)
 - transaction type: bill
 - Product_Service = Drilling oil and gas wells
-Annotation:
-Primary flagged dimension is D1 / Financial Object Constraint.
-The issue is that the profile filters Drilling oil and gas wells as product_service, but the expected financial/account object scope is different.
+
+Dimension-level rule:
+D1 / Financial Object Constraint covers wrong financial object, account class, transaction type, business scope, entity role, schema role, or required literal scope. The same literal value can still be wrong if it is grounded to the wrong semantic role.
+
+Case application:
+The profile uses the target literal as a product/service filter. The question requires the value to identify the relevant financial/account object for the bill. Therefore, the primary mismatch is D1.
+
 Expected:
 {{
   "mismatch_type": "financial_object_error",
-  "mismatch_detail": "The profile uses product_service scope where the question requires the relevant financial/account object scope.",
-  "repair_hint": "Filter using the appropriate account or financial object while keeping the bill transaction scope and first-date logic.",
+  "mismatch_detail": "The profile grounds the required value to the wrong semantic role. It uses product/service scope where the question requires the relevant financial/account object scope.",
+  "repair_hint": "Filter using the appropriate financial object, account, or schema role while preserving the bill transaction scope and first-date logic.",
   "confidence": "high"
 }}
 
 Example 3 — D2 / Financial Measure Constraint
 Question: What are my AP This week to date?
+
 Profile evidence:
 - No aggregation detected
 - Selected columns: amount, transaction_id
@@ -249,15 +235,17 @@ Profile evidence:
 - Sign convention: gross amount with no debit/credit direction
 - AP_paid = Yes
 - No schema-grounded account type, transaction type, or entity scope filter detected
-Annotation:
-Primary flagged dimension is D2 / Financial Measure Constraint.
-Important: Although the profile also lacks full AP/account scope, the main teaching signal is D2.
-The SQL returns raw transaction_id + gross amount rows instead of computing the required AP financial measure.
-Do not classify this example as D1 merely because AP scope is incomplete.
+
+Dimension-level rule:
+D2 / Financial Measure Constraint covers wrong numeric value, wrong monetary column, wrong sign convention, wrong quantity/count interpretation, missing aggregate financial measure, or returning raw rows when a financial measure is required. Correct filters are not enough if the selected value does not represent the requested financial concept.
+
+Case application:
+The profile returns raw transaction_id and gross amount rows. The question asks for an AP value. Although the profile also lacks full AP/account scope, the main failure is that it does not compute the required payable/AP financial measure. Therefore, the primary mismatch is D2, not merely D1.
+
 Expected:
 {{
   "mismatch_type": "financial_measure_error",
-  "mismatch_detail": "The profile returns raw transaction_id and gross amount rows instead of computing the required accounts payable measure.",
+  "mismatch_detail": "The profile returns raw transaction_id and gross amount rows instead of computing the required accounts payable financial measure.",
   "repair_hint": "Use the appropriate AP/payable measure and aggregate it over the requested week-to-date period.",
   "confidence": "medium"
 }}
@@ -510,6 +498,24 @@ def verify_decompiled_sql(
         stage1_raw_output = llm_generate_fn(stage1_prompt)
         stage1_parsed = parse_verifier_json(stage1_raw_output)
         stage1 = normalise_stage1_output(stage1_parsed)
+    
+    except MaxTokensReachedError as exc:
+        return VerificationResult(
+            answers_question=None,
+            mismatch_type=None,
+            mismatch_detail=None,
+            repair_hint=None,
+            ambiguous=True,
+            should_abstain=True,
+            abstain_reason="stage1_max_tokens_reached", 
+            confidence=None,
+            raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
+            invalid_mismatch_type=None,
+            error="Stage 1 LLM generation was truncated due to max tokens limit.",
+            stage1_answers_question=None,
+            stage1_ambiguous=None,
+            stage2_ran=False,
+        )
 
     except Exception as exc:
         return VerificationResult(
@@ -580,15 +586,19 @@ def verify_decompiled_sql(
             return VerificationResult(
                 answers_question=None,
                 mismatch_type=None,
-                mismatch_detail=stage2["mismatch_detail"],
-                repair_hint=stage2["repair_hint"],
+                mismatch_detail=None,
+                repair_hint=None,
                 ambiguous=True,
                 should_abstain=True,
                 abstain_reason="invalid_stage2_mismatch_type",
                 confidence=stage2["confidence"],
                 raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
                 invalid_mismatch_type=stage2["invalid_mismatch_type"],
-                error="Stage 2 did not return a valid mismatch_type.",
+                error=(
+                    "Stage 2 did not return a valid mismatch_type. "
+                    "Stage 2 mismatch_detail and repair_hint were suppressed because this row is an abstention. "
+                    "Inspect raw_output for debugging."
+                ),
                 stage1_answers_question=stage1["answers_question"],
                 stage1_ambiguous=stage1["ambiguous"],
                 stage2_ran=True,

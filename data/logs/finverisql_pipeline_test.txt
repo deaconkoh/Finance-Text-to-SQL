@@ -1,0 +1,17 @@
+Input rows selected: 20
+Already completed in output file: 0
+Pending rows: 20
+Verifier backend: ollama
+Verifier model: deepseek-r1:8b
+  0%|          | 0/20 [00:00<?, ?it/s]  5%|▌         | 1/20 [01:14<23:41, 74.81s/it] 10%|█         | 2/20 [02:17<20:17, 67.65s/it]Input rows selected: 20
+Already completed in output file: 1
+Pending rows: 19
+Verifier backend: ollama
+Verifier model: deepseek-r1:8b
+  0%|          | 0/19 [00:00<?, ?it/s]  5%|▌         | 1/19 [00:58<17:41, 58.95s/it] 11%|█         | 2/19 [02:02<17:25, 61.49s/it] 16%|█▌        | 3/19 [03:05<16:36, 62.31s/it] 21%|██        | 4/19 [07:43<36:51, 147.44s/it]Input rows selected: 20
+Already completed in output file: 4
+Pending rows: 16
+Verifier backend: ollama
+Verifier model: deepseek-r1:8b
+  0%|          | 0/16 [00:00<?, ?it/s]  6%|▋         | 1/16 [02:53<43:22, 173.52s/it] 12%|█▎        | 2/16 [04:30<29:56, 128.32s/it] 19%|█▉        | 3/16 [06:24<26:26, 122.05s/it] 25%|██▌       | 4/16 [08:24<24:13, 121.13s/it] 31%|███▏      | 5/16 [10:04<20:48, 113.49s/it] 38%|███▊      | 6/16 [10:53<15:17, 91.73s/it]  44%|████▍     | 7/16 [15:00<21:20, 142.26s/it] 50%|█████     | 8/16 [17:06<18:18, 137.26s/it] 56%|█████▋    | 9/16 [22:05<21:53, 187.69s/it] 62%|██████▎   | 10/16 [26:11<20:34, 205.81s/it] 69%|██████▉   | 11/16 [27:10<13:23, 160.73s/it] 75%|███████▌  | 12/16 [28:32<09:07, 136.76s/it] 81%|████████▏ | 13/16 [40:59<16:05, 321.79s/it] 88%|████████▊ | 14/16 [43:05<08:44, 262.44s/it] 94%|█████████▍| 15/16 [51:01<05:26, 326.94s/it]100%|██████████| 16/16 [54:42<00:00, 295.04s/it]100%|██████████| 16/16 [54:42<00:00, 205.15s/it]
+Saved verification outputs to: data/outputs/finverisql/promptv5_groupA_deepseek8b_limit20.jsonl
