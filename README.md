@@ -292,11 +292,11 @@ Example Semantic Mapping Output:
 
 Ambiguous column resolution is isolated. If an unqualified column can refer to multiple annotated schema columns, the ambiguity is recorded, but its possible meanings are not added to confirmed semantic fields. This prevents ambiguous SQL from polluting the verifier with false semantic claims.
 
-### Semantic Decompilation of Candidate SQL
+### Build Financial Semantic Intermediate Representation (FSIR)
 
-The schema-grounded semantic representation is then converted into a concise description of what the candidate SQL actually computes.
+The schema-grounded semantic representation is then converted into a structured Financial Semantic Intermediate Representation (FSIR). The FSIR is a verifier-facing JSON profile that describes what the candidate SQL appears to compute.
 
-This shifts FinVeriSQL away from predicting an expected intent from the question. Instead, the generated SQL is treated as the object being verified.
+This shifts FinVeriSQL away from predicting an expected intent from the question. Instead, the generated SQL is treated as the object being verified. The older natural-language decompiler may still be kept as a debugging artefact, but the verifier-facing profile is the FSIR.
 
 The workflow becomes:
 
@@ -304,7 +304,7 @@ The workflow becomes:
 Predicted SQL
 → SQL AST parsing
 → schema-grounded semantic mapping
-→ semantic decompilation
+→ FSIR construction
 → constrained semantic verification against the question
 ```
 
@@ -317,7 +317,21 @@ Question
 → rule comparison
 ```
 
-Example Decompiled SQL Meaning:
+#### Comparison: Old Decompiler vs. FSIR Layer
+
+Our previous verification methodology utilized a Structural Decompiler. While the decompiler was technically an intermediate representation, it merely re-mapped physical SQL clauses into a semi-structured text block using bracketed headers (e.g., [Tables], [Filters], [Select]). This approach left critical business boundaries buried inside text arrays, forcing the downstream verifier LLM to read, parse, and evaluate conversational strings simultaneously.
+
+The FSIR replaces this plain-text configuration with three highly structured, coupled JSON layers that align perfectly with our core research dimensions:
+
+1. Financial Concept Layer (D1 — Object & Grounding Constraints): Instead of capturing loose filter criteria, this layer uses a unified scope_constraints collection. It explicitly categorizes filters by their operational roles (derived_financial_classes: ["revenue"], scope_role: "customer") and documents their location (global_filter vs measurement_condition), mapping boundaries cleanly.
+
+2. Measurement Layer (D2 — Quantitative & Sign Vector Constraints): The FSIR eliminates unlinked text lists and replaces them with dedicated Measurement Objects. Each calculation tracks its own target column, aggregation function, and normal balance state (extracted_vector: "credit", column_normal_balance: "credit_normal"), ensuring multi-metric comparative ledger queries maintain perfect structural alignment.
+
+3. Reporting Topology Layer (D3 — Computational & Temporal Constraints): This layer maps the output structure of the query, explicitly tracking the primary analytical_grain alongside a multi-tiered temporal canonicalization engine. The date resolution block maps physical predicates, handles symbolic anchors, and assigns a clean logical period label (prior_month) to isolate raw database calculations from semantic intent evaluation.
+
+The FSIR is descriptive, not evaluative. It does not decide whether the SQL is correct. It only records the physical SQL computation, schema-grounded scope constraints, measurement components, grouping behaviour, temporal predicates, and extraction limitations.
+
+Example FSIR Meaning:
 
 ```text
 Candidate SQL:
@@ -325,28 +339,71 @@ SELECT SUM(Debit)
 FROM master_txn_table
 WHERE Account_type = 'Expense';
 
-Decompiled semantic meaning:
+FSIR semantic meaning:
 {
-  "financial_object": "expense",
-  "financial_measure": "debit_normal flow measure",
-  "aggregation": "sum",
-  "filters": [
-    "Account_type = Expense"
-  ],
-  "natural_language_summary": "This query returns the sum of debit-side monetary flow for records filtered to expense accounts."
+  "financial_concept_layer": {
+    "scope_constraints": [
+      {
+        "scope_role": "account",
+        "mapped_column": "Account_type",
+        "operator": "=",
+        "values": ["Expense"],
+        "mapped_concepts": ["expense"],
+        "derived_financial_classes": ["expense"],
+        "enforcement_location": "global_filter"
+      }
+    ]
+  },
+  "measurement_layer": {
+    "measurements": [
+      {
+        "measurement_id": "m1",
+        "metric_expression": {
+          "expression_type": "single_column_aggregate",
+          "raw_expression": "SUM(Debit)",
+          "components": [
+            {
+              "column": "Debit",
+              "aggregation_function": "SUM",
+              "extracted_vector": "debit",
+              "column_normal_balance": "debit_normal",
+              "measure_type": "flow",
+              "unit": "currency"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "reporting_topology_layer": {
+    "analytical_grain": "global_summary",
+    "grouping_dimensions": [],
+    "temporal_resolution": {
+      "source_dialect": "sqlite",
+      "parser_scope": "sqlite_date_arithmetic",
+      "representation_level": "symbolic_temporal_boundary",
+      "normalization_status": "no_temporal_filter"
+    }
+  }
 }
 ```
 
+The FSIR avoids collapsing financial meaning into scalar fields. For example, account-related concepts are represented as arrays so mixed scopes such as `Income` and `Expense` can be represented without losing information. Measurement fields describe the SQL's extracted vector, such as `debit`, `credit`, `quantity`, `row_count`, or `raw_numeric`, rather than the expected financial measure for the question.
+
+Temporal logic is represented through symbolic reporting-period boundaries. The current physical parser targets SQLite date arithmetic because BookSQL is SQLite-based, but the FSIR temporal representation stores dialect-independent concepts such as anchor, boundary, offsets, period grain, and normalisation status.
+
+FSIR v0 does not fully support HAVING extraction because the current parser does not expose HAVING clauses separately. It can surface suspicious pre-aggregation numeric threshold filters in WHERE, but aggregation-threshold filtering errors involving HAVING are treated as a known D3 limitation until parser support is added.
+
 ### Apply Semantic Verification
 
-The verifier compares the decompiled SQL meaning against the original natural language question using a constrained semantic verification task.
+The verifier compares the FSIR against the original natural language question using a constrained semantic verification task.
 
-The verifier does not regenerate SQL and does not independently predict a full expected query. It only checks whether the SQL meaning logically answers the question.
+The verifier does not regenerate SQL and does not independently predict a full expected query. It only checks whether the SQL meaning represented by the FSIR logically answers the question.
 
 | Dimensions                                 | Definition                                                                                                                                                                                                  |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dimension 1 - Financial Object Constraint  | Checks whether the decompiled SQL operates on the same financial object requested by the question. For example, an SQL meaning that calculates expense does not answer a question asking for revenue.       |
-| Dimension 2 - Financial Measure Constraint | Checks whether the SQL uses the correct financial measure or sign convention. For example, using an amount column may be semantically different from using a credit-normal or debit-normal measure.         |
+| Dimension 1 - Financial Object Constraint  | Checks whether the FSIR operates on the same financial object requested by the question. For example, an SQL meaning that calculates expense does not answer a question asking for revenue.                 |
+| Dimension 2 - Financial Measure Constraint | Checks whether the SQL uses the correct physical measure, extracted vector, or unit. For example, using a raw amount column may be semantically different from using a credit or debit vector.              |
 | Dimension 3 - Computation Logic Constraint | Checks whether the aggregation, temporal scope, grouping, ranking, or formula logic matches the question. This includes mismatches such as monthly vs YTD filtering, count vs sum, or wrong grouping level. |
 
 The output of this stage is a verification decision, mismatch type, and optional repair hint. If the SQL contains unsupported lineage, unresolved ambiguity, or insufficient semantic grounding, FinVeriSQL abstains instead of issuing a confident error label.
@@ -361,7 +418,7 @@ Based on the semantic verification output, route each flagged query to one of th
 | Multi-dimension or LLM-classified violation       | LLM repair prompt with full error context                     |
 | Conflicting constraints or unresolvable ambiguity | Abstention — return clarification request to user             |
 
-**Note:** Multi-dimension refers to a flagged error of both D1 and D2 at the same time on the same SQL. Abstention occurs when the verifier cannot confidently determine whether the decompiled SQL meaning answers the question, or when the SQL contains unsupported lineage or unresolved ambiguity.
+**Note:** Multi-dimension refers to a flagged error of both D1 and D2 at the same time on the same SQL. Abstention occurs when the verifier cannot confidently determine whether the FSIR answers the question, or when the SQL contains unsupported lineage or unresolved ambiguity.
 
 #### Example Repair Prompt - Single Violation:
 
@@ -452,14 +509,14 @@ There will be 2 main forms of comparison system, Main Comparison Table & Interna
 
 ### Internal Ablation Table (Evaluation Set):
 
-| System                        | Purpose                                                                                                    |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Full FinVeriSQL               | Reference system                                                                                           |
-| Raw-SQL verifier              | Tests whether direct LLM verification over raw SQL is weaker than verification over decompiled SQL meaning |
-| Structural decompilation only | Tests whether readable SQL structure alone is sufficient without financial semantic grounding              |
-| Remove schema annotations     | Tests whether column-level semantic grounding matters                                                      |
-| Remove value-level concepts   | Tests whether classifier value mappings improve financial object and event understanding                   |
-| No abstention mechanism       | Tests whether explicit uncertainty handling improves reliability                                           |
+| System                           | Purpose                                                                                      |
+| -------------------------------- | -------------------------------------------------------------------------------------------- |
+| Full FinVeriSQL                  | Reference system                                                                             |
+| Raw-SQL verifier                 | Tests whether direct LLM verification over raw SQL is weaker than verification over FSIR     |
+| FSIR without financial grounding | Tests whether structured SQL facts alone are sufficient without financial semantic grounding |
+| Remove schema annotations        | Tests whether column-level semantic grounding matters                                        |
+| Remove value-level concepts      | Tests whether classifier value mappings improve financial object and event understanding     |
+| No abstention mechanism          | Tests whether explicit uncertainty handling improves reliability                             |
 
 ### Evaluation Metrics:
 

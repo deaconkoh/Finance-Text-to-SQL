@@ -53,9 +53,43 @@ class VerificationResult:
 
 
 def detect_profile_status(execution_profile: str) -> str | None:
+    """
+    Detect hard-abstain statuses from either:
+    - old text decompiler profile: [Status] PARSE_ERROR
+    - new FSIR JSON profile: {"status": "...", "profile_extraction": {...}}
+    """
+    text = execution_profile.strip()
+
+    # New FSIR JSON format.
+    try:
+        parsed = json.loads(text)
+
+        if isinstance(parsed, dict):
+            top_status = parsed.get("status")
+            if top_status in ABSTAIN_STATUSES:
+                return top_status
+
+            profile_extraction = parsed.get("profile_extraction") or {}
+            if isinstance(profile_extraction, dict):
+                extraction_status = profile_extraction.get("status")
+                if extraction_status in ABSTAIN_STATUSES:
+                    return extraction_status
+
+                unsupported_features = profile_extraction.get("unsupported_features") or []
+                if "unsupported_lineage" in unsupported_features:
+                    return "UNSUPPORTED_LINEAGE"
+
+    except json.JSONDecodeError:
+        pass
+
+    # Old decompiler text format fallback.
     for line in execution_profile.splitlines():
         if line.startswith("[Status]"):
-            return line.replace("[Status]", "").strip()
+            status = line.replace("[Status]", "").strip()
+            if status in ABSTAIN_STATUSES:
+                return status
+            return status
+
     return None
 
 
@@ -63,77 +97,117 @@ def build_stage1_verdict_prompt(question: str, execution_profile: str) -> str:
     return f"""
 You are a finance-aware SQL semantic verifier.
 
-Task:
-Decide whether the DECOMPILED SQL EXECUTION PROFILE answers the USER QUESTION.
-You do not see raw SQL, gold SQL, execution results, or database contents.
-Treat the execution profile as the full meaning of the candidate SQL.
+Your task is to determine whether the Financial Semantic Intermediate Representation (FSIR) logically answers the user's financial question.
 
-Output:
-Return ONLY this JSON object — no explanation, no error classification, no repair hint:
+Return ONLY this JSON object with no additional text:
 {{
   "answers_question": true | false | null,
   "ambiguous": true | false
 }}
 
-Decision rules:
-- true: profile satisfies all main required dimensions of the question.
-- false: clear semantic mismatch or clearly wrong required dimension.
-- null: profile is incomplete or under-specified, but not clearly wrong.
-- ambiguous=true: question or profile is genuinely unclear; insufficient evidence to judge.
-- Do not reject for missing minor supporting evidence that is not required by the question.
-- However, if the missing or wrong evidence changes the financial meaning of the answer, treat it as a clear mismatch.
-- Central dimensions include the requested financial concept/event, semantic grounding, transaction scope, entity role, measure, time period, and computation logic.
-- Do not invent dimensions not shown in the profile; do not accept based on partial overlap alone.
+Decision meanings:
+- true: the FSIR satisfies the main financial concept, measure, and computation required by the question.
+- false: the FSIR clearly contradicts a required financial concept, measure, scope, temporal period, or output grain.
+- null: the FSIR is incomplete or under-specified, and the correct decision cannot be made confidently.
+- Use ambiguous=true only when no confident true/false judgement can be made from the FSIR. Do not mark a case ambiguous merely because the FSIR is imperfect, partial, or missing minor context.
 
-Financial checking guide:
-- Row count, quantity, gross amount, debit, credit, payable, receivable, sales, and expense are not interchangeable.
-- Financial object checking has two internal parts:
-  D1a financial concept/event: whether the profile uses the correct business concept, account class, transaction event, or financial scope requested by the question.
-  D1b semantic grounding: whether the profile uses the correct schema role for required entities, literals, and filters.
-- A literal match is not enough if the value is grounded to the wrong schema role.
-- A correct customer/vendor/product/account value is not enough if the transaction event or financial concept is wrong.
-- Product/service, account, transaction type, customer, vendor, employee, and payment status are different semantic roles. Do not treat them as interchangeable.
-- Raw transaction rows are not sufficient when the question asks for an aggregate financial measure.
-- Correct column or filter is not enough if the computation is at the wrong granularity.
-- Required breakdowns such as by month, by customer, by vendor, by account, or by product are part of computation logic, not optional presentation details.
+Core verification invariants:
 
-Semantic dimensions to check:
-- D1a financial concept/event: correct business concept, transaction event, account class, AP/AR, revenue/expense, invoice/payment/bill/sales scope.
-- D1b semantic grounding: correct schema role for required entities, literals, filters, customer/vendor/employee, product/service, account, or transaction type.
-- D2 financial measure: count, quantity, amount, debit, credit, payable, receivable, balance, raw rows, or aggregate measure.
-- D3 computation logic: aggregation, grouping/breakdown, ranking, ordering, formula, temporal logic, comparison, limit, or unit of analysis.
+1. Financial Concept Layer, D1 boundary match
+Check financial_concept_layer.scope_constraints.
+
+Verify whether the FSIR contains the required financial object, transaction event, entity role, account scope, product/service scope, payment status, or business boundary requested by the question.
+
+A value match is invalid if it is grounded to the wrong role. For example, a vendor request is not satisfied by a customer scope, and an account/category request is not necessarily satisfied by product_service scope.
+
+Scope constraints are not mutually exclusive. A correct query may combine account scope, customer/vendor scope, product/service scope, transaction event scope, and temporal scope.
+
+If the question clearly requires a business boundary, entity role, transaction event, payment status, or account class, and the FSIR contains no equivalent scope evidence, return false.
+
+Use mapped_concepts and derived_financial_classes as financial class evidence. These fields may contain multiple values.
+
+2. Measurement Layer, D2 physical measure match
+Check measurement_layer.measurements.metric_expression.components.
+
+Compare the question's requested measure against:
+- extracted_vector
+- measure_family
+- column_normal_balance
+- aggregation_function
+- unit
+- algebraic_sign
+- conditional_modifiers
+
+Do not treat column_normal_balance as the expected answer. It describes the selected physical column.
+
+Revenue/Sales metrics usually require a credit or revenue-compatible vector. Expense/Cost/Spend metrics usually require a debit or expense-compatible vector. If the FSIR uses the opposite vector, return false unless the metric_expression explicitly shows a valid net, contra, refund, or conditional sign-adjustment calculation.
+
+Questions asking for quantities or units sold require a quantity measure. Questions asking for number of records, transactions, invoices, or bills may use row_count. Quantity and row_count are not interchangeable.
+
+3. Reporting Topology Layer, D3 computation and grain match
+Check reporting_topology_layer.analytical_grain, grouping_dimensions, temporal_resolution, ordering, limit, and filter_topology.
+
+Match required output breakdowns:
+- "by customer" requires customer grouping.
+- "by vendor" requires vendor grouping.
+- "by account" requires account grouping.
+- "by product/service/item" requires product_service grouping.
+- "monthly" or "by month" requires temporal_period grouping unless the question asks for one specific month only.
+
+Check timeframes using temporal_resolution.date_predicates.
+Use normalized_label when available. Otherwise compare symbolic fields such as anchor, start_boundary, end_boundary, offsets, period_grain, and normalization_status.
+
+For top/highest/lowest/first/latest questions, check ordering and limit where relevant.
+
+If the question asks for groups with total value above/below a threshold, post-aggregation filtering is usually required. If FSIR only shows a pre-aggregation WHERE threshold filter, this may be a computation mismatch.
+
+Operational directives:
+- Do not reject for minor presentation differences that do not change the financial answer.
+- If profile_extraction.status is PARTIAL, evaluate using available fields.
+- Return null only if missing or unsupported FSIR features prevent a confident decision.
+- Do not accept based on partial overlap alone.
 
 Examples:
-Example 1 — ACCEPT
-Question: How many invoices are still outstanding for Danielle Lara as of This month?
-Profile: COUNT(DISTINCT transaction_id), transaction type: invoice, customer: danielle lara, AR_paid=No, transaction_date from start of current month to now.
-Verdict: true — all required dimensions satisfied (count, invoice scope, customer filter, unpaid status, current-month period).
-{{"answers_question": true, "ambiguous": false}}
 
-Example 2 — REJECT (computation_logic_error)
-Question: Show the minimum, average, maximum order quantity of all invoices.
-Profile: MIN(Quantity), AVG(Quantity), MAX(Quantity), transaction type: invoice, no GROUP BY detected, row-level quantity statistics.
-Verdict: false — correct column and scope, but aggregation is at row level rather than the required business-level order quantity granularity.
-{{"answers_question": false, "ambiguous": false}}
+Example 1 — CORRECT
+Question: Compare sales by customer last month.
+FSIR evidence:
+- scope_constraints include account/revenue scope with derived_financial_classes or mapped_concepts containing revenue/income.
+- measurement component extracts credit with SUM.
+- analytical_grain is customer_level.
+- grouping_dimensions include customer as primary.
+- temporal_resolution includes normalized_label prior_month.
+Verdict: {{"answers_question": true, "ambiguous": false}}
 
-Example 3 — REJECT (financial_object_error)
-Question: When was the first time we received bill for Drilling oil and gas wells?
-Profile: MIN(transaction_date), transaction type: bill, Product_Service = Drilling oil and gas wells.
-Verdict: false — the required value is present but grounded to product/service scope; the question requires it as the financial account/object identifier.
-{{"answers_question": false, "ambiguous": false}}
+Example 2 — REJECT, D2 measurement mismatch
+Question: How many boxes of paper did we sell?
+FSIR evidence:
+- product_service scope includes paper.
+- measurement component uses row_count or COUNT(transaction_id).
+- no quantity component is present.
+Verdict: {{"answers_question": true, "ambiguous": false}}
 
-Example 4 — REJECT (financial_measure_error)
-Question: What are my AP This week to date?
-Profile: No aggregation detected, selected columns: amount, transaction_id, gross amount with no debit/credit direction, AP_paid=Yes.
-Verdict: false — returns raw rows with gross amount instead of an aggregated payable/AP measure; debit/credit direction is absent.
-{{"answers_question": false, "ambiguous": false}}
+Example 3 — REJECT, D1 missing event scope
+Question: Did we receive payment from Donna Brock?
+FSIR evidence:
+- customer scope includes Donna Brock.
+- no payment transaction event, payment status, or equivalent payment scope is present.
+Verdict: {{"answers_question": true, "ambiguous": false}}
+
+Example 4 — REJECT, D3 breakdown omission
+Question: Show monthly spend by vendor.
+FSIR evidence:
+- vendor grouping is present.
+- expense/debit/spend-compatible measure is present.
+- no temporal_period grouping is present.
+Verdict: {{"answers_question": true, "ambiguous": false}}
 
 Actual case:
 
-User question:
+User Question:
 {question}
 
-Decompiled SQL execution profile:
+FSIR Profile:
 {execution_profile}
 
 Return only the JSON object.
@@ -435,12 +509,10 @@ def normalise_stage1_output(parsed: dict[str, Any]) -> dict[str, Any]:
     if ambiguous is None:
         ambiguous = False
 
-    if ambiguous:
-        return {
-            "answers_question": None,
-            "ambiguous": True,
-        }
-
+    # If the model gave a concrete verdict, keep it.
+    # This prevents contradictory outputs like:
+    # {"answers_question": true, "ambiguous": true}
+    # from becoming unnecessary abstentions.
     if answers_question is True:
         return {
             "answers_question": True,
@@ -453,6 +525,7 @@ def normalise_stage1_output(parsed: dict[str, Any]) -> dict[str, Any]:
             "ambiguous": False,
         }
 
+    # Only abstain when the model did not give a concrete verdict.
     return {
         "answers_question": None,
         "ambiguous": True,

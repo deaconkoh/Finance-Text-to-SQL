@@ -23,18 +23,17 @@ try:
     from src.finverisql.sql_semantic_mapping import build_sql_financial_semantics
     from src.finverisql.sql_decompiler import decompile_semantics
     from src.finverisql.verifier import verify_decompiled_sql
-    from src.utils.inference_utils import (
-        build_verifier_generate_fn
-    )
+    from src.utils.inference_utils import build_verifier_generate_fn
+    from src.finverisql.fsir_builder import build_fsir, render_fsir_for_verifier
+    
 except ModuleNotFoundError:
     from finverisql.schema_loader import SchemaAnnotationStore
     from finverisql.sql_parser import parse_sql
     from finverisql.sql_semantic_mapping import build_sql_financial_semantics
     from finverisql.sql_decompiler import decompile_semantics
     from finverisql.verifier import verify_decompiled_sql
-    from utils.inference_utils import (
-        build_verifier_generate_fn
-    )
+    from utils.inference_utils import build_verifier_generate_fn
+    from src.finverisql.fsir_builder import build_fsir, render_fsir_for_verifier
 
 
 DEFAULT_SCHEMA_PATH = "data/booksql/schema_annotations.json"
@@ -176,26 +175,114 @@ def load_completed_question_ids(output_path: str | Path) -> set[str]:
 def build_execution_profile(
     generated_sql: str,
     schema_store: SchemaAnnotationStore,
-) -> str:
+) -> tuple[str, str | None]:
+    """
+    Build the verifier-facing FSIR profile, the old text decompiler
+    is kept as debug evidence.
+
+    Returns:
+        execution_profile:
+            FSIR JSON string passed to the verifier.
+
+        debug_decompiled_profile:
+            Old human-readable decompiler output for debugging only.
+    """
     try:
         parsed_sql = parse_sql(generated_sql)
         semantics = build_sql_financial_semantics(
             parsed_sql=parsed_sql,
             schema_store=schema_store,
         )
-        return decompile_semantics(semantics)
+
+        fsir = build_fsir(semantics)
+        execution_profile = render_fsir_for_verifier(fsir)
+
+        try:
+            debug_decompiled_profile = decompile_semantics(semantics)
+        except Exception as debug_exc:
+            debug_decompiled_profile = (
+                "[Status] DEBUG_DECOMPILER_FAILED\n"
+                f"{type(debug_exc).__name__}: {debug_exc}"
+            )
+
+        return execution_profile, debug_decompiled_profile
 
     except Exception as exc:
+        error_profile = {
+            "status": "PARSE_ERROR",
+            "profile_extraction": {
+                "status": "PARSE_ERROR",
+                "unsupported_features": [],
+                "extraction_warnings": [
+                    f"SQL parse/FSIR pipeline failed before verification: {type(exc).__name__}: {exc}"
+                ],
+            },
+            "financial_concept_layer": {
+                "scope_constraints": [],
+                "scope_coverage": {
+                    "has_scope_constraints": False,
+                    "status": "unknown_due_to_parse_error",
+                    "ambiguous_scope_count": 0,
+                    "note": "No scope constraints can be extracted from a parse error.",
+                },
+            },
+            "measurement_layer": {
+                "measurements": [],
+            },
+            "reporting_topology_layer": {
+                "analytical_grain": "unknown",
+                "grouping_dimensions": [],
+                "temporal_resolution": {
+                    "source_dialect": "sqlite",
+                    "parser_scope": "sqlite_date_arithmetic",
+                    "representation_level": "symbolic_temporal_boundary",
+                    "date_predicates": [],
+                    "normalization_status": "unknown",
+                },
+                "filter_topology": {
+                    "where_measure_threshold_filters": [],
+                    "post_aggregation_filters": [],
+                    "post_aggregation_filter_extraction_status": "not_supported_in_fsir_v0",
+                    "threshold_filtering_risk": "unknown_due_to_parse_error",
+                },
+                "ordering": [],
+                "limit": None,
+            },
+        }
+
         return (
-            "[Status] PARSE_ERROR\n"
-            f"SQL parse/decompile pipeline failed before verification: {type(exc).__name__}: {exc}"
+            json.dumps(error_profile, ensure_ascii=False, indent=2, sort_keys=True),
+            (
+                "[Status] PARSE_ERROR\n"
+                f"SQL parse/FSIR pipeline failed before verification: {type(exc).__name__}: {exc}"
+            ),
         )
 
 
 def detect_profile_status(execution_profile: str) -> str | None:
+    """
+    Supports both:
+    - old text decompiler profiles with [Status]
+    - new FSIR JSON profiles with status/profile_extraction.status
+    """
+    try:
+        parsed = json.loads(execution_profile)
+
+        if isinstance(parsed, dict):
+            profile_extraction = parsed.get("profile_extraction") or {}
+
+            return (
+                profile_extraction.get("status")
+                or parsed.get("status")
+            )
+
+    except Exception:
+        pass
+
     for line in execution_profile.splitlines():
         if line.startswith("[Status]"):
             return line.replace("[Status]", "").strip()
+
     return None
 
 
@@ -206,6 +293,7 @@ def make_output_row(
     execution_profile: str,
     verification_result: dict[str, Any],
     verifier_model: str,
+    debug_decompiled_profile: str | None = None,
 ) -> dict[str, Any]:
     return {
         "question_id": source_row.get("question_id") or source_row.get("id"),
@@ -222,6 +310,8 @@ def make_output_row(
         "profile_status": detect_profile_status(execution_profile),
         "verifier_model": verifier_model,
         "verification": verification_result,
+        "debug_decompiled_profile": debug_decompiled_profile,
+        "profile_format": "fsir_json",
     }
 
 
@@ -287,7 +377,7 @@ def run_verification(args: argparse.Namespace) -> None:
             question = get_question(row, args.question_key)
             generated_sql = get_generated_sql(row, args.sql_key)
 
-            execution_profile = build_execution_profile(
+            execution_profile, debug_decompiled_profile = build_execution_profile(
                 generated_sql=generated_sql,
                 schema_store=schema_store,
             )
@@ -303,6 +393,7 @@ def run_verification(args: argparse.Namespace) -> None:
                 question=question,
                 generated_sql=generated_sql,
                 execution_profile=execution_profile,
+                debug_decompiled_profile=debug_decompiled_profile,
                 verification_result=verification.to_dict(),
                 verifier_model=args.model_name,
             )
@@ -326,6 +417,8 @@ def run_verification(args: argparse.Namespace) -> None:
                 "profile_status": None,
                 "verifier_model": args.model_name,
                 "verification": None,
+                "debug_decompiled_profile": None,
+                "profile_format": "fsir_json",
                 "status": "failed",
                 "error": str(exc),
             }
