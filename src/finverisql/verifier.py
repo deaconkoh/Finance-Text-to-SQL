@@ -82,23 +82,28 @@ Decision rules:
 - ambiguous=true: question or profile is genuinely unclear; insufficient evidence to judge.
 - Do not reject for missing minor supporting evidence that is not required by the question.
 - However, if the missing or wrong evidence changes the financial meaning of the answer, treat it as a clear mismatch.
-- Central dimensions include the requested financial object, transaction scope, entity role, measure, time period, and computation logic.
+- Central dimensions include the requested financial concept/event, semantic grounding, transaction scope, entity role, measure, time period, and computation logic.
 - Do not invent dimensions not shown in the profile; do not accept based on partial overlap alone.
 
 Financial checking guide:
 - Row count, quantity, gross amount, debit, credit, payable, receivable, sales, and expense are not interchangeable.
-- Product/service scope does not satisfy account/category scope.
-- A payment status flag alone does not establish AP/AR/account scope.
+- Financial object checking has two internal parts:
+  D1a financial concept/event: whether the profile uses the correct business concept, account class, transaction event, or financial scope requested by the question.
+  D1b semantic grounding: whether the profile uses the correct schema role for required entities, literals, and filters.
+- A literal match is not enough if the value is grounded to the wrong schema role.
+- A correct customer/vendor/product/account value is not enough if the transaction event or financial concept is wrong.
+- Product/service, account, transaction type, customer, vendor, employee, and payment status are different semantic roles. Do not treat them as interchangeable.
 - Raw transaction rows are not sufficient when the question asks for an aggregate financial measure.
 - Correct column or filter is not enough if the computation is at the wrong granularity.
+- Required breakdowns such as by month, by customer, by vendor, by account, or by product are part of computation logic, not optional presentation details.
 
-Error taxonomy (for your reference when assessing mismatches):
-- financial_object_error: wrong object, account class, transaction type, entity role, or semantic grounding of a value.
-- financial_measure_error: wrong numeric measure, sign convention, missing aggregate, or raw rows instead of a financial measure.
-- computation_logic_error: wrong aggregation level, grouping, ranking, formula, temporal logic, or output granularity.
+Semantic dimensions to check:
+- D1a financial concept/event: correct business concept, transaction event, account class, AP/AR, revenue/expense, invoice/payment/bill/sales scope.
+- D1b semantic grounding: correct schema role for required entities, literals, filters, customer/vendor/employee, product/service, account, or transaction type.
+- D2 financial measure: count, quantity, amount, debit, credit, payable, receivable, balance, raw rows, or aggregate measure.
+- D3 computation logic: aggregation, grouping/breakdown, ranking, ordering, formula, temporal logic, comparison, limit, or unit of analysis.
 
 Examples:
-
 Example 1 — ACCEPT
 Question: How many invoices are still outstanding for Danielle Lara as of This month?
 Profile: COUNT(DISTINCT transaction_id), transaction type: invoice, customer: danielle lara, AR_paid=No, transaction_date from start of current month to now.
@@ -163,8 +168,19 @@ Do not output any other mismatch_type.
 
 Definitions:
 - financial_object_error:
-  Wrong or missing financial object, account class, transaction type, business scope, entity scope, product/service scope, customer/vendor scope, account scope, or required literal filter.
+  The profile fails to match the financial concept, business event, or semantic grounding required by the question.
 
+  Internal subtype D1a — financial concept/event mismatch:
+  Use this reasoning when the profile operates on the wrong financial concept, account class, business event, or transaction scope.
+  Examples include revenue vs expense, receivable vs payable, invoice vs payment, bill vs sales receipt, sales scope vs purchase scope.
+
+  Internal subtype D1b — semantic grounding mismatch:
+  Use this reasoning when the profile uses the wrong schema role to represent a required value, entity, or scope.
+  Examples include product/service where account scope is required, customer where vendor is required, employee where customer/vendor is required, transaction type where account class is required.
+
+  For both D1a and D1b, output:
+  "financial_object_error".
+  
 - financial_measure_error:
   Wrong numeric or monetary measure, wrong debit/credit/amount sign convention, wrong quantity/count interpretation, missing aggregate financial measure, or raw rows returned when an aggregate financial measure is required.
 
@@ -212,7 +228,7 @@ Profile evidence:
 - Product_Service = Drilling oil and gas wells
 
 Dimension-level rule:
-D1 / Financial Object Constraint covers wrong financial object, account class, transaction type, business scope, entity role, schema role, or required literal scope. The same literal value can still be wrong if it is grounded to the wrong semantic role.
+D1 / Financial Object Constraint has two internal subtypes. D1a covers wrong financial concept or transaction event. D1b covers wrong semantic grounding, where the right-looking value is attached to the wrong schema role. The same literal value can still be wrong if it is grounded as a product/service when the question requires account, transaction, entity, or financial-object scope.
 
 Case application:
 The profile uses the target literal as a product/service filter. The question requires the value to identify the relevant financial/account object for the bill. Therefore, the primary mismatch is D1.

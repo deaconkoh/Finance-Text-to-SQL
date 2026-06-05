@@ -125,35 +125,62 @@ def build_mlx_vlm_generate_fn(
 
     return generate_fn
 
-
-def infer_verifier_backend(model_name: str) -> str:
+def build_mlx_lm_generate_fn(
+    model_name: str,
+    num_predict: int = 768,
+):
     """
-    Infer verifier backend from model name.
+    Build a local MLX-LM generation function for text-only instruct models.
 
-    - Hugging Face MLX models usually use repo-style names like:
-      mlx-community/gemma-4-e4b-it-4bit
-    - Ollama models usually use tag-style names like:
-      deepseek-r1:8b
-      gemma4:e4b-mlx
+    Intended for models such as:
+        mlx-community/Llama-3.1-8B-Instruct-4bit
     """
-    if model_name.startswith("mlx-community/"):
-        return "mlx-vlm"
+    from mlx_lm import load, generate
 
-    return "ollama"
+    print(f"Loading MLX-LM verifier model: {model_name}")
 
+    model, tokenizer = load(model_name)
+
+    def generate_fn(prompt: str) -> str:
+        messages = [
+            {"role": "user", "content": prompt}
+        ]
+
+        formatted_prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+
+        result = generate(
+            model,
+            tokenizer,
+            prompt=formatted_prompt,
+            max_tokens=num_predict,
+            verbose=False,
+        )
+
+        return result.strip()
+
+    return generate_fn
 
 def build_verifier_generate_fn(
     model_name: str,
+    backend: str,
     temperature: float = 0.0,
     num_predict: int = 768,
     timeout: int = 300,
 ):
-    backend = infer_verifier_backend(model_name)
-
     if backend == "mlx-vlm":
         return build_mlx_vlm_generate_fn(
             model_name=model_name,
             temperature=temperature,
+            num_predict=num_predict,
+        )
+
+    if backend == "mlx-lm":
+        return build_mlx_lm_generate_fn(
+            model_name=model_name,
             num_predict=num_predict,
         )
 
@@ -167,7 +194,10 @@ def build_verifier_generate_fn(
             think=False,
         )
 
-    raise ValueError(f"Unsupported verifier backend inferred: {backend}")
+    raise ValueError(
+        "Unsupported verifier backend: "
+        f"{backend}. Expected one of: auto, ollama, mlx-lm, mlx-vlm."
+    )
 
 def build_zero_shot_prompt(question: str, schema: str) -> str:
     return f"""Instruction:

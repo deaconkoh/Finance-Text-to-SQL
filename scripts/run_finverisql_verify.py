@@ -24,8 +24,7 @@ try:
     from src.finverisql.sql_decompiler import decompile_semantics
     from src.finverisql.verifier import verify_decompiled_sql
     from src.utils.inference_utils import (
-        build_verifier_generate_fn,
-        infer_verifier_backend,
+        build_verifier_generate_fn
     )
 except ModuleNotFoundError:
     from finverisql.schema_loader import SchemaAnnotationStore
@@ -34,8 +33,7 @@ except ModuleNotFoundError:
     from finverisql.sql_decompiler import decompile_semantics
     from finverisql.verifier import verify_decompiled_sql
     from utils.inference_utils import (
-        build_verifier_generate_fn,
-        infer_verifier_backend,
+        build_verifier_generate_fn
     )
 
 
@@ -261,7 +259,7 @@ def run_verification(args: argparse.Namespace) -> None:
     print(f"Input rows selected: {len(rows)}")
     print(f"Already completed in output file: {len(rows) - len(pending_rows)}")
     print(f"Pending rows: {len(pending_rows)}")
-    print(f"Verifier backend: {infer_verifier_backend(args.model_name)}")
+    print(f"Verifier backend: {args.backend}")
     print(f"Verifier model: {args.model_name}")
 
     if not pending_rows:
@@ -272,6 +270,7 @@ def run_verification(args: argparse.Namespace) -> None:
 
     llm_generate_fn = build_verifier_generate_fn(
         model_name=args.model_name,
+        backend=args.backend,
         temperature=args.temperature,
         num_predict=args.num_predict,
         timeout=args.timeout,
@@ -407,6 +406,12 @@ def parse_args() -> argparse.Namespace:
         help="Do not skip rows already present in output path.",
     )
 
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "ollama", "mlx-lm", "mlx-vlm"],
+        default="auto",
+        help="Verifier backend. Use 'auto' to infer from model name, or explicitly choose ollama, mlx-lm, or mlx-vlm.",
+    )
     return parser.parse_args()
 
 
