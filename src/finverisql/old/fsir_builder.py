@@ -1,3 +1,16 @@
+"""Build the Financial Semantic Intermediate Representation (FSIR).
+
+This module converts `SQLFinancialSemantics` into the verifier-facing JSON
+profile used by FinVeriSQL. The FSIR describes what candidate SQL appears to
+compute through a financial concept layer, measurement layer, and reporting
+topology layer.
+
+Main input is `SQLFinancialSemantics` from `sql_semantic_mapping.py`. Main
+outputs are the FSIR dictionary from `build_fsir` and deterministic verifier JSON
+from `render_fsir_for_verifier`. The FSIR is descriptive, not evaluative: it
+does not inspect the question, gold SQL, or execution result.
+"""
+
 from __future__ import annotations
 
 import json
@@ -5,7 +18,7 @@ import re
 from collections import defaultdict
 from typing import Any
 
-from .sql_semantic_mapping import (
+from ..sql_semantic_mapping import (
     AnnotatedColumnUse,
     AnnotatedFilterCondition,
     SQLFinancialSemantics,
@@ -576,6 +589,91 @@ def _build_financial_concept_layer(
         ),
     }
 
+def _build_scope_summary(constraints: list[dict[str, Any]]) -> dict[str, Any]:
+    present_scope_roles = []
+    present_financial_classes = []
+    present_transaction_events = []
+    present_payment_statuses = []
+    present_entity_roles = []
+
+    for constraint in constraints:
+        role = constraint.get("scope_role")
+        if role:
+            present_scope_roles.append(role)
+
+        for value in constraint.get("derived_financial_classes") or []:
+            present_financial_classes.append(value)
+
+        for value in constraint.get("mapped_concepts") or []:
+            if role == "transaction_event":
+                present_transaction_events.append(value)
+            elif role == "payment_status":
+                present_payment_statuses.append(value)
+
+        if role in {"customer", "vendor", "employee", "product_service", "account"}:
+            present_entity_roles.append(role)
+
+    return {
+        "present_scope_roles": _unique(present_scope_roles),
+        "present_financial_classes": _unique(present_financial_classes),
+        "present_transaction_events": _unique(present_transaction_events),
+        "present_payment_statuses": _unique(present_payment_statuses),
+        "present_entity_roles": _unique(present_entity_roles),
+    }
+
+
+def _build_measurement_summary(measurements: list[dict[str, Any]]) -> dict[str, Any]:
+    measure_families = []
+    extracted_vectors = []
+    aggregation_functions = []
+    expression_types = []
+
+    for measurement in measurements:
+        metric_expression = measurement.get("metric_expression") or {}
+        expression_type = metric_expression.get("expression_type")
+        if expression_type:
+            expression_types.append(expression_type)
+
+        for component in metric_expression.get("components") or []:
+            if component.get("measure_family"):
+                measure_families.append(component["measure_family"])
+            if component.get("extracted_vector"):
+                extracted_vectors.append(component["extracted_vector"])
+            if component.get("aggregation_function"):
+                aggregation_functions.append(component["aggregation_function"])
+
+    return {
+        "present_measure_families": _unique(measure_families),
+        "present_extracted_vectors": _unique(extracted_vectors),
+        "present_aggregation_functions": _unique(aggregation_functions),
+        "present_expression_types": _unique(expression_types),
+    }
+
+
+def _build_topology_summary(
+    grouping_dimensions: list[dict[str, Any]],
+    temporal_resolution: dict[str, Any],
+) -> dict[str, Any]:
+    grouping_roles = [
+        dimension.get("grouping_role")
+        for dimension in grouping_dimensions
+        if dimension.get("grouping_role")
+    ]
+
+    date_predicates = temporal_resolution.get("date_predicates") or []
+
+    temporal_filter_labels = [
+        predicate.get("normalized_label")
+        for predicate in date_predicates
+        if predicate.get("normalized_label")
+    ]
+
+    return {
+        "present_grouping_roles": _unique(grouping_roles),
+        "has_temporal_grouping": "temporal_period" in grouping_roles,
+        "has_temporal_filter": bool(date_predicates),
+        "temporal_filter_labels": _unique(temporal_filter_labels),
+    }
 
 def _build_scope_constraints(
     semantics: SQLFinancialSemantics,
@@ -595,6 +693,8 @@ def _build_scope_constraints(
         first_column = _first_condition_column(condition)
         mapped_column = _qualified_column(first_column.table, first_column.column) if first_column else None
         mapped_concepts = _normalise_values(condition.concepts)
+        # Scope classes come from frozen schema/value annotations only. The
+        # builder does not infer expected concepts from the question.
         derived_classes, class_source = _derive_scope_financial_classes(
             condition=condition,
             first_column=first_column,
@@ -824,6 +924,9 @@ def _scope_role_from_column_name(column_name: str) -> str:
 
     if "paid" in lowered or "payment" in lowered or "open_balance" in lowered:
         return "payment_status"
+    
+    if "payment_method" in lowered:
+        return "payment_method"
 
     return "conditional_scope"
 
@@ -862,6 +965,9 @@ def _scope_role_from_condition(condition: AnnotatedFilterCondition) -> str:
 
     if "financial_measure" in roles:
         return "measure_filter"
+    
+    if "payment_method_identifier" in roles:
+        return "payment_method"
 
     return "other"
 
@@ -1064,6 +1170,9 @@ def _normalise_temporal_predicate(
 
     lowered = expression.lower()
 
+    # The temporal normalizer recognizes a small set of SQLite physical forms
+    # and maps them to symbolic boundaries. Unknown forms remain explicit rather
+    # than being forced into a calendar label.
     if operator == "BETWEEN" and len(condition.values) >= 2:
         return _normalise_between_temporal_predicate(
             condition=condition,
@@ -1138,6 +1247,8 @@ def _normalise_between_temporal_predicate(
         end_boundary=end_boundary,
     )
 
+    # A registered label such as prior_month is verifier-friendly shorthand.
+    # The raw start/end boundary objects remain in the FSIR as the source facts.
     if normalized_label is not None:
         normalization_status = "normalized"
         evaluation_mode = "relative_period"
@@ -1338,6 +1449,8 @@ def _parse_sqlite_date_call(raw: str) -> dict[str, Any] | None:
     for modifier in modifiers:
         normalized_modifier = _normalise_sqlite_date_modifier(modifier)
 
+        # SQLite's "start of month/year" modifiers change the symbolic base
+        # boundary; numeric modifiers become offsets from that base.
         if normalized_modifier == "start_of_month":
             base = "start_of_current_month"
             period_grain = "month"
@@ -1803,8 +1916,9 @@ def _build_profile_extraction(
             "and maps expressions into a dialect-independent symbolic boundary representation."
         )
 
-    # Do NOT add a general HAVING warning here.
-    # HAVING support is a known FSIR v0 limitation, not a per-query extraction warning.
+    # NOTE: Do not add a general HAVING warning here. HAVING support is a known
+    # FSIR v0 limitation, not a per-query extraction warning unless the parser
+    # later exposes HAVING clauses explicitly.
 
     status = "OK"
 
@@ -1822,16 +1936,25 @@ def _build_profile_extraction(
 
 # Public API
 def build_fsir(semantics: SQLFinancialSemantics) -> dict[str, Any]:
-    """
-    Build a Financial Semantic Intermediate Representation.
+    """Build a Financial Semantic Intermediate Representation.
 
-    Important:
-    - Uses only SQLFinancialSemantics.
-    - Does not inspect the natural language question.
-    - Does not inspect gold SQL.
-    - Does not inspect execution results.
-    - Does not decide whether the generated SQL is correct.
-    - Describes what the generated SQL appears to compute.
+    Args:
+        semantics: Schema-grounded SQL semantics produced by
+            `build_sql_financial_semantics`.
+
+    Returns:
+        Nested FSIR dictionary with extraction metadata, summaries, financial
+        concept layer, measurement layer, and reporting topology layer.
+
+    Important assumptions:
+        This function uses only `SQLFinancialSemantics`. It does not inspect the
+        question, gold SQL, or execution results, and it does not decide whether
+        the generated SQL is correct.
+
+    Edge cases:
+        Parse errors return a structured `PARSE_ERROR` FSIR. Unsupported lineage
+        still returns available parsed facts but marks status as
+        `UNSUPPORTED_LINEAGE` so the verifier can abstain.
     """
     if semantics.parse_error:
         return {
@@ -1840,6 +1963,27 @@ def build_fsir(semantics: SQLFinancialSemantics) -> dict[str, Any]:
                 "status": "PARSE_ERROR",
                 "unsupported_features": [],
                 "extraction_warnings": [semantics.parse_error],
+            },
+            "fsir_summary": {
+                "scope_summary": {
+                    "present_scope_roles": [],
+                    "present_financial_classes": [],
+                    "present_transaction_events": [],
+                    "present_payment_statuses": [],
+                    "present_entity_roles": [],
+                },
+                "measurement_summary": {
+                    "present_measure_families": [],
+                    "present_extracted_vectors": [],
+                    "present_aggregation_functions": [],
+                    "present_expression_types": [],
+                },
+                "topology_summary": {
+                    "present_grouping_roles": [],
+                    "has_temporal_grouping": False,
+                    "has_temporal_filter": False,
+                    "temporal_filter_labels": [],
+                },
             },
             "financial_concept_layer": {
                 "scope_constraints": [],
@@ -1863,12 +2007,20 @@ def build_fsir(semantics: SQLFinancialSemantics) -> dict[str, Any]:
                     "date_predicates": [],
                     "normalization_status": "unknown",
                 },
+                "filter_topology": {
+                    "where_measure_threshold_filters": [],
+                    "post_aggregation_filters": [],
+                    "post_aggregation_filter_extraction_status": "not_supported_in_fsir_v0",
+                    "threshold_filtering_risk": "none_detected",
+                    "note": "No filter topology can be extracted from a parse error.",
+                },
                 "ordering": [],
                 "limit": None,
             },
         }
 
     measurements = _build_measurements(semantics)
+
     measurement_ids = [
         measurement["measurement_id"]
         for measurement in measurements
@@ -1876,33 +2028,61 @@ def build_fsir(semantics: SQLFinancialSemantics) -> dict[str, Any]:
 
     grouping_dimensions = _build_grouping_dimensions(semantics)
 
+    # Build the three FSIR layers separately so the verifier can inspect object
+    # scope, physical measures, and computation topology without parsing prose.
+    financial_concept_layer = _build_financial_concept_layer(
+        semantics=semantics,
+        measurement_ids=measurement_ids,
+    )
+
+    temporal_resolution = _build_temporal_resolution(semantics)
+
+    measurement_layer = {
+        "measurements": measurements,
+    }
+
+    reporting_topology_layer = {
+        "analytical_grain": _derive_analytical_grain(
+            semantics=semantics,
+            grouping_dimensions=grouping_dimensions,
+        ),
+        "grouping_dimensions": grouping_dimensions,
+        "temporal_resolution": temporal_resolution,
+        "filter_topology": _build_filter_topology(semantics),
+        "ordering": semantics.logic.order_by_expressions,
+        "limit": semantics.logic.limit,
+    }
+
     return {
         "status": "OK" if not semantics.unsupported_lineage else "UNSUPPORTED_LINEAGE",
         "profile_extraction": _build_profile_extraction(semantics),
-        "financial_concept_layer": _build_financial_concept_layer(
-            semantics=semantics,
-            measurement_ids=measurement_ids,
-        ),
-        "measurement_layer": {
-            "measurements": measurements,
-        },
-        "reporting_topology_layer": {
-            "analytical_grain": _derive_analytical_grain(
-                semantics=semantics,
-                grouping_dimensions=grouping_dimensions,
+        "fsir_summary": {
+            "scope_summary": _build_scope_summary(
+                financial_concept_layer["scope_constraints"]
             ),
-            "grouping_dimensions": grouping_dimensions,
-            "temporal_resolution": _build_temporal_resolution(semantics),
-            "filter_topology": _build_filter_topology(semantics),
-            "ordering": semantics.logic.order_by_expressions,
-            "limit": semantics.logic.limit,
+            "measurement_summary": _build_measurement_summary(measurements),
+            "topology_summary": _build_topology_summary(
+                grouping_dimensions=grouping_dimensions,
+                temporal_resolution=temporal_resolution,
+            ),
         },
+        "financial_concept_layer": financial_concept_layer,
+        "measurement_layer": measurement_layer,
+        "reporting_topology_layer": reporting_topology_layer,
     }
 
-
 def render_fsir_for_verifier(fsir: dict[str, Any]) -> str:
-    """
-    Deterministic JSON rendering for verifier input.
+    """Render an FSIR dictionary as deterministic verifier input JSON.
+
+    Args:
+        fsir: FSIR dictionary returned by `build_fsir`.
+
+    Returns:
+        Pretty-printed JSON string with stable key ordering.
+
+    Assumption:
+        The verifier prompt expects stable, inspectable JSON text rather than a
+        lossy natural-language decompilation.
     """
     return json.dumps(
         fsir,

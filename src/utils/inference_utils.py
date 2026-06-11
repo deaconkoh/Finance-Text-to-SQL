@@ -1,3 +1,23 @@
+"""Inference and prompt utilities for FinVeriSQL experiments.
+
+This module contains lightweight wrappers around local LLM backends used by
+baseline generation and verifier calls. It supports Ollama chat models,
+MLX-VLM verifier models, MLX-LM text models, and legacy llama.cpp/GGUF calls.
+
+Main inputs:
+- Model/backend configuration.
+- Natural-language question, serialized schema, and optional few-shot examples.
+- Raw model output text from baseline SQL generators.
+
+Main outputs:
+- Callable generation functions.
+- Baseline prompt strings.
+- Cleaned SQL strings and resumability key sets for JSONL output files.
+
+The prompt helpers preserve the project's fixed baseline prompt behavior unless
+callers explicitly choose a few-shot setting.
+"""
+
 import json
 import re
 from pathlib import Path
@@ -15,7 +35,30 @@ def build_ollama_generate_fn(
     format_json: bool = True,
     think: bool | None = None,
 ):
+    """Create an Ollama chat generation callable.
+
+    Args:
+        model_name: Ollama model name.
+        temperature: Sampling temperature passed to Ollama.
+        num_predict: Maximum generated tokens.
+        timeout: HTTP timeout in seconds.
+        format_json: Whether to request Ollama JSON-format output.
+        think: Optional Ollama reasoning/thinking toggle for models that
+            support it.
+
+    Returns:
+        Callable that accepts a prompt string and returns final assistant text.
+
+    Raises:
+        MaxTokensReachedError: When Ollama reports generation stopped at the
+            token limit.
+        ValueError: When Ollama returns no final content.
+
+    Assumption:
+        Ollama is available at `http://localhost:11434/api/chat`.
+    """
     def generate(prompt: str) -> str:
+        """Send one prompt to Ollama and return final assistant content."""
         payload = {
             "model": model_name,
             "messages": [
@@ -54,6 +97,8 @@ def build_ollama_generate_fn(
         content = (message.get("content") or "").strip()
         thinking = (message.get("thinking") or "").strip()
 
+        # Some reasoning models can spend the full token budget in hidden or
+        # exposed thinking and never emit the final JSON payload.
         if not content and thinking:
             raise ValueError(
                 "Ollama returned empty final content but non-empty thinking. "
@@ -81,14 +126,19 @@ def build_mlx_vlm_generate_fn(
     temperature: float = 0.0,
     num_predict: int = 768,
 ):
-    """
-    Build a local MLX-VLM generation function.
+    """Build a local MLX-VLM generation function.
 
-    Intended for models such as:
-        mlx-community/gemma-4-e4b-it-4bit
+    Args:
+        model_name: MLX-VLM model identifier.
+        temperature: Sampling temperature.
+        num_predict: Maximum generated tokens.
 
     Returns:
-        prompt: str -> output: str
+        Callable mapping `prompt: str` to `output: str`.
+
+    Assumption:
+        Intended for verifier-style local models such as
+        `mlx-community/gemma-4-e4b-it-4bit`.
     """
     from mlx_vlm import load, generate
     from mlx_vlm.prompt_utils import apply_chat_template
@@ -100,6 +150,7 @@ def build_mlx_vlm_generate_fn(
     config = load_config(model_name)
 
     def generate_fn(prompt: str) -> str:
+        """Generate one verifier response with the loaded MLX-VLM model."""
         formatted_prompt = apply_chat_template(
             processor,
             config,
@@ -129,11 +180,18 @@ def build_mlx_lm_generate_fn(
     model_name: str,
     num_predict: int = 768,
 ):
-    """
-    Build a local MLX-LM generation function for text-only instruct models.
+    """Build a local MLX-LM generation function for text-only instruct models.
 
-    Intended for models such as:
-        mlx-community/Llama-3.1-8B-Instruct-4bit
+    Args:
+        model_name: MLX-LM model identifier.
+        num_predict: Maximum generated tokens.
+
+    Returns:
+        Callable mapping `prompt: str` to `output: str`.
+
+    Assumption:
+        Intended for chat-template-compatible instruct models such as
+        `mlx-community/Llama-3.1-8B-Instruct-4bit`.
     """
     from mlx_lm import load, generate
 
@@ -142,6 +200,7 @@ def build_mlx_lm_generate_fn(
     model, tokenizer = load(model_name)
 
     def generate_fn(prompt: str) -> str:
+        """Generate one verifier response with the loaded MLX-LM model."""
         messages = [
             {"role": "user", "content": prompt}
         ]
@@ -171,6 +230,21 @@ def build_verifier_generate_fn(
     num_predict: int = 768,
     timeout: int = 300,
 ):
+    """Dispatch verifier generation to the configured backend.
+
+    Args:
+        model_name: Local or Ollama model identifier.
+        backend: One of `ollama`, `mlx-lm`, or `mlx-vlm`.
+        temperature: Sampling temperature for backends that expose it.
+        num_predict: Maximum generated tokens.
+        timeout: Ollama HTTP timeout in seconds.
+
+    Returns:
+        Backend-specific generation callable.
+
+    Raises:
+        ValueError: If `backend` is unsupported.
+    """
     if backend == "mlx-vlm":
         return build_mlx_vlm_generate_fn(
             model_name=model_name,
@@ -200,6 +274,15 @@ def build_verifier_generate_fn(
     )
 
 def build_zero_shot_prompt(question: str, schema: str) -> str:
+    """Build the zero-shot baseline Text-to-SQL prompt.
+
+    Args:
+        question: Natural-language question.
+        schema: Serialized database schema.
+
+    Returns:
+        Prompt string instructing the model to return only SQL.
+    """
     return f"""Instruction:
 You are given a database schema and a natural language question.
 Generate a valid SQL query that answers the question.
@@ -217,6 +300,20 @@ def build_few_shot_prompt(
     schema: str,
     examples: list[dict[str, Any]],
 ) -> str:
+    """Build the fixed three-example few-shot baseline prompt.
+
+    Args:
+        question: Natural-language question to answer.
+        schema: Serialized database schema shared by the prompt.
+        examples: Exactly three dictionaries containing `question` and
+            `gold_sql` keys.
+
+    Returns:
+        Prompt string with three demonstrations followed by the target question.
+
+    Raises:
+        ValueError: If the caller does not provide exactly three examples.
+    """
     if len(examples) != 3:
         raise ValueError(
             f"Few-shot prompt requires exactly 3 examples, got {len(examples)}"
@@ -254,11 +351,25 @@ def build_baseline_prompt(
     prompt_setting: str = "zero_shot",
     examples: list[dict[str, Any]] | None = None,
 ) -> str:
-    """
-    Backwards-compatible prompt builder.
+    """Build a baseline prompt for zero-shot or few-shot generation.
 
-    Prefer calling build_zero_shot_prompt() or build_few_shot_prompt() directly
-    inside baseline_runner.py.
+    Args:
+        question: Natural-language question.
+        schema: Serialized schema.
+        prompt_setting: `zero_shot` or `few_shot`.
+        examples: Required few-shot examples when `prompt_setting` is
+            `few_shot`.
+
+    Returns:
+        Prompt string for the baseline SQL generator.
+
+    Raises:
+        ValueError: If `prompt_setting` is unsupported or examples are missing
+            for few-shot mode.
+
+    Note:
+        This helper is kept for backward compatibility. New baseline code can
+        call `build_zero_shot_prompt` or `build_few_shot_prompt` directly.
     """
     if prompt_setting == "zero_shot":
         return build_zero_shot_prompt(question=question, schema=schema)
@@ -276,6 +387,15 @@ def build_baseline_prompt(
 
 
 def strip_special_tokens(text: str) -> str:
+    """Remove known model stop tokens from generated text.
+
+    Args:
+        text: Raw model output.
+
+    Returns:
+        Text with known special tokens removed and surrounding whitespace
+        stripped.
+    """
     cleaned = text
 
     for token in SPECIAL_TOKENS:
@@ -285,11 +405,17 @@ def strip_special_tokens(text: str) -> str:
 
 
 def trim_after_sql_statement(text: str) -> str:
-    """
-    Conservative cleanup for non-fenced model output.
+    """Trim trailing explanation after the first SQL statement.
 
-    If a semicolon exists, keep content up to the first semicolon.
-    This prevents trailing explanation from entering generated_sql.
+    Args:
+        text: Non-fenced model output beginning with SQL.
+
+    Returns:
+        Content through the first semicolon if present, otherwise stripped text.
+
+    Assumption:
+        This is conservative cleanup for `generated_sql`; callers should keep
+        `raw_output` unchanged for auditability.
     """
     text = text.strip()
 
@@ -301,11 +427,18 @@ def trim_after_sql_statement(text: str) -> str:
 
 
 def extract_sql(text: str | None) -> str:
-    """
-    Extract SQL from model output.
+    """Extract candidate SQL from raw model output.
 
-    raw_output should remain unchanged in baseline_runner.py.
-    This function only cleans the generated_sql field.
+    Args:
+        text: Raw model output, possibly fenced or containing explanation.
+
+    Returns:
+        Best-effort SQL string. Returns an empty string for `None`.
+
+    Edge cases:
+        SQL fenced with ```sql is preferred, then any fenced block, then text
+        starting at the first `SELECT` or `WITH`. Raw output should remain
+        unchanged in the caller.
     """
     if text is None:
         return ""
@@ -327,12 +460,26 @@ def extract_sql(text: str | None) -> str:
     sql_start = re.search(r"\b(select|with)\b", cleaned_text, re.IGNORECASE)
     if sql_start:
         candidate = cleaned_text[sql_start.start() :]
+        # Keep only the first statement so trailing explanations do not get
+        # passed into SQLite execution or semantic parsing.
         return strip_special_tokens(trim_after_sql_statement(candidate))
 
     return cleaned_text
 
 
 def load_completed_run_keys(output_path: str | Path) -> set[tuple[str, str | None, str]]:
+    """Load completed `(question_id, generator, prompt_setting)` run keys.
+
+    Args:
+        output_path: JSONL output file path.
+
+    Returns:
+        Set of completed run keys for resumable baseline generation.
+
+    Edge cases:
+        Malformed lines are skipped so partially written JSONL files do not
+        block resumption.
+    """
     output_path = Path(output_path)
 
     if not output_path.exists():
@@ -358,11 +505,17 @@ def load_completed_run_keys(output_path: str | Path) -> set[tuple[str, str | Non
 
 
 def load_completed_question_ids(output_path: str | Path) -> set[str]:
-    """
-    Legacy helper.
+    """Load completed question IDs from a JSONL output file.
 
-    Prefer load_completed_run_keys() because the same question may be run with
-    different models or prompt settings.
+    Args:
+        output_path: JSONL output file path.
+
+    Returns:
+        Set of `question_id` values already present in the file.
+
+    Note:
+        This is a legacy helper. Prefer `load_completed_run_keys` because the
+        same question may be run with different models or prompt settings.
     """
     output_path = Path(output_path)
 
@@ -383,6 +536,17 @@ def load_completed_question_ids(output_path: str | Path) -> set[str]:
 
 
 def generate_mlx_output(model, tokenizer, prompt: str, max_new_tokens: int = 192) -> str:
+    """Generate SQL text with an MLX-LM model/tokenizer pair.
+
+    Args:
+        model: Loaded MLX-LM model.
+        tokenizer: Loaded MLX-LM tokenizer with chat-template support.
+        prompt: Baseline prompt string.
+        max_new_tokens: Maximum generated tokens.
+
+    Returns:
+        Stripped model output text.
+    """
     from mlx_lm import generate
 
     messages = [{"role": "user", "content": prompt}]
@@ -403,11 +567,19 @@ def generate_mlx_output(model, tokenizer, prompt: str, max_new_tokens: int = 192
 
 
 def generate_llama_cpp_output(llm, prompt: str, max_new_tokens: int = 192) -> str:
-    """
-    Backend-specific generation for GGUF models via llama.cpp.
+    """Generate SQL text with a llama.cpp-compatible GGUF model.
 
-    The baseline prompt itself remains identical across models.
-    This wrapper only handles llama.cpp/GGUF generation.
+    Args:
+        llm: Loaded llama.cpp model object.
+        prompt: Baseline prompt string.
+        max_new_tokens: Maximum generated tokens.
+
+    Returns:
+        Stripped model output text.
+
+    Assumption:
+        The baseline prompt itself remains identical across models; this wrapper
+        only handles llama.cpp/GGUF generation and a fallback manual chat format.
     """
     messages = [{"role": "user", "content": prompt}]
 
@@ -423,6 +595,8 @@ def generate_llama_cpp_output(llm, prompt: str, max_new_tokens: int = 192) -> st
 
     except Exception:
         # Fallback if the GGUF file does not expose a usable chat template.
+        # NOTE: This preserves behavior for older local GGUF files that cannot
+        # create chat completions directly.
         formatted_prompt = f"""<|im_start|>user
 {prompt}<|im_end|>
 <|im_start|>assistant

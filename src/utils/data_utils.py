@@ -47,6 +47,15 @@ class BookSQLConfigError(RuntimeError):
 
 
 def normalize_split(value: Any) -> str:
+    """Normalize BookSQL split aliases.
+
+    Args:
+        value: Raw split value from a prepared BookSQL row or CLI argument.
+
+    Returns:
+        Canonical split name. `val`, `dev`, and `validation` all map to
+        `validation`; other values are lowercased and stripped.
+    """
     split = str(value).strip().lower()
 
     if split in {"val", "dev", "validation"}:
@@ -62,6 +71,18 @@ def normalize_split(value: Any) -> str:
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
+    """Read a JSONL file into a list of dictionaries.
+
+    Args:
+        path: JSONL file path.
+
+    Returns:
+        List of parsed JSON object rows.
+
+    Raises:
+        BookSQLConfigError: If any non-empty line is invalid JSON or not a JSON
+            object.
+    """
     rows: list[dict[str, Any]] = []
 
     with path.open("r", encoding="utf-8") as f:
@@ -90,6 +111,15 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def validate_normalized_row(row: dict[str, Any], row_index: int) -> None:
+    """Validate required fields in one prepared BookSQL row.
+
+    Args:
+        row: Parsed JSON object from `booksql_normalized.jsonl`.
+        row_index: Zero-based row index used in error messages.
+
+    Raises:
+        BookSQLConfigError: If required normalized fields are missing.
+    """
     missing = [column for column in BOOKSQL_NORMALIZED_COLUMNS if column not in row]
 
     if missing:
@@ -100,6 +130,18 @@ def validate_normalized_row(row: dict[str, Any], row_index: int) -> None:
 
 
 def load_booksql_schema(schema_path: str | Path | None = None) -> str:
+    """Load the prompt-ready BookSQL schema text.
+
+    Args:
+        schema_path: Optional explicit schema path. Defaults to
+            `data/booksql/schema.txt`.
+
+    Returns:
+        Non-empty schema string.
+
+    Raises:
+        BookSQLConfigError: If the schema file is missing or empty.
+    """
     path = Path(schema_path) if schema_path is not None else BOOKSQL_SCHEMA_PATH
 
     if not path.exists():
@@ -117,6 +159,21 @@ def load_booksql_schema(schema_path: str | Path | None = None) -> str:
 
 
 def resolve_booksql_db_path(db_path: str | Path | None = None) -> Path:
+    """Resolve the BookSQL SQLite database path.
+
+    Args:
+        db_path: Optional explicit database path.
+
+    Returns:
+        Existing SQLite database path.
+
+    Raises:
+        BookSQLConfigError: If the resolved database file is missing.
+
+    Note:
+        `BOOKSQL_DB_PATH` environment variable is respected when `db_path` is
+        not provided.
+    """
     if db_path is not None:
         path = Path(db_path)
     elif os.getenv("BOOKSQL_DB_PATH"):
@@ -134,14 +191,33 @@ def resolve_booksql_db_path(db_path: str | Path | None = None) -> Path:
 
 
 def get_booksql_db_path(db_path: str | Path | None = None) -> str:
+    """Return the resolved BookSQL SQLite database path as a string.
+
+    Args:
+        db_path: Optional explicit database path.
+
+    Returns:
+        String path suitable for SQLite connection helpers.
+    """
     return str(resolve_booksql_db_path(db_path))
 
 
 def generate_schema_from_sqlite(db_path: str | Path) -> str:
-    """
-    Generate a prompt-ready schema string from the BookSQL SQLite database.
+    """Generate a prompt-ready schema string from the BookSQL SQLite database.
 
-    Used by scripts/setup_booksql.py to create data/booksql/schema.txt.
+    Args:
+        db_path: SQLite database path.
+
+    Returns:
+        Serialized schema string with table columns, primary keys, and foreign
+        keys.
+
+    Raises:
+        BookSQLConfigError: If the database is missing or contains no user
+            tables.
+
+    Note:
+        Used by `scripts/setup_booksql.py` to create `data/booksql/schema.txt`.
     """
     path = Path(db_path)
 
@@ -206,21 +282,29 @@ def load_booksql_records(
     db_path: str | Path | None = None,
     dataset_name: str = BOOKSQL_DATASET_NAME,
 ) -> list[dict[str, Any]]:
-    """
-    Load prepared BookSQL records and attach the schema for prompting.
+    """Load prepared BookSQL records and attach the schema for prompting.
 
-    The expected input file is:
-        data/booksql/booksql_normalized.jsonl
+    Args:
+        split: Optional split filter. `val`, `dev`, and `validation` normalize
+            to `validation`.
+        data_path: Optional prepared JSONL path. Defaults to
+            `data/booksql/booksql_normalized.jsonl`.
+        schema_path: Optional schema text path.
+        db_path: Compatibility argument; validation is handled separately by
+            evaluation utilities.
+        dataset_name: Compatibility argument retained for callers that still
+            pass a dataset name.
 
-    Each row must already be normalized into:
-        question_id, db_id, question, gold_sql, level, split
+    Returns:
+        List of records with `schema` attached for prompting.
 
-    The returned records include:
-        schema
+    Raises:
+        BookSQLConfigError: If the prepared dataset is missing, malformed, or no
+            records match the requested split.
 
-    The dataset_name argument is kept only so existing baseline_runner.py calls
-    do not break. It is not used here because setup_booksql.py handles download
-    and preparation.
+    Note:
+        `dataset_name` and `db_path` are intentionally unused compatibility
+        parameters. `scripts/setup_booksql.py` handles download and preparation.
     """
     _ = dataset_name
     _ = db_path

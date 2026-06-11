@@ -1,6 +1,83 @@
+#!/usr/bin/env python3
+"""
+Run FinVeriSQL verifier ablations over generated Text-to-SQL outputs.
+
+This script supports three verifier input profile modes:
+
+1. ast
+   Uses only the parsed SQL AST.
+   Pipeline:
+       generated SQL
+       -> SQL parser
+       -> parsed SQL AST
+       -> verifier
+
+   Purpose:
+       Tests whether SQL syntax/structure alone is enough for verification.
+
+2. semantic
+   Uses the full schema-grounded semantic profile.
+   Pipeline:
+       generated SQL
+       -> SQL parser
+       -> schema-grounded semantic mapper
+       -> full semantic profile
+       -> verifier
+
+   Purpose:
+       Tests whether detailed schema-grounded mapping improves verification.
+
+3. compact
+   Uses the compact verifier payload derived from the semantic profile.
+   Pipeline:
+       generated SQL
+       -> SQL parser
+       -> schema-grounded semantic mapper
+       -> compact semantic profile / verifier payload
+       -> verifier
+
+   Purpose:
+       Tests whether a compact profile preserves useful semantic evidence while
+       reducing redundant/debug-heavy context.
+
+Recommended ablation commands from project root:
+
+AST-only ablation:
+    python scripts/run_finverisql_verify.py \
+      --input-path data/outputs/baseline/baseline_qwen_train_sample_50_few_shot.jsonl \
+      --output-path data/outputs/verify/verify_ast.jsonl \
+      --schema-path data/booksql/schema_annotations.json \
+      --profile-mode ast \
+      --limit 50
+
+Full semantic profile ablation:
+    python scripts/run_finverisql_verify.py \
+      --input-path data/outputs/baseline/baseline_qwen_train_sample_50_few_shot.jsonl \
+      --output-path data/outputs/verify/verify_semantic.jsonl \
+      --schema-path data/booksql/schema_annotations.json \
+      --profile-mode semantic \
+      --limit 50
+
+Compact semantic profile ablation:
+    python scripts/run_finverisql_verify.py \
+      --input-path data/outputs/baseline/baseline_qwen_train_sample_50_few_shot.jsonl \
+      --output-path data/outputs/verify/verify_compact.jsonl \
+      --schema-path data/booksql/schema_annotations.json \
+      --profile-mode compact \
+      --limit 50
+
+Notes:
+- Use separate output files for each ablation mode for cleaner analysis.
+- This script is non-destructive. It appends to output JSONL files.
+- By default, completed rows are skipped using a profile-aware run key.
+- Passing --overwrite does not delete the old output file. It only disables skipping,
+  so duplicate rows may be appended.
+"""
+
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -21,23 +98,21 @@ try:
     from src.finverisql.schema_loader import SchemaAnnotationStore
     from src.finverisql.sql_parser import parse_sql
     from src.finverisql.sql_semantic_mapping import build_sql_financial_semantics
-    from src.finverisql.sql_decompiler import decompile_semantics
+    from src.finverisql.compact_semantic_profile import build_verifier_payload
     from src.finverisql.verifier import verify_decompiled_sql
     from src.utils.inference_utils import build_verifier_generate_fn
-    from src.finverisql.fsir_builder import build_fsir, render_fsir_for_verifier
-    
+
 except ModuleNotFoundError:
     from finverisql.schema_loader import SchemaAnnotationStore
     from finverisql.sql_parser import parse_sql
     from finverisql.sql_semantic_mapping import build_sql_financial_semantics
-    from finverisql.sql_decompiler import decompile_semantics
+    from finverisql.compact_semantic_profile import build_verifier_payload
     from finverisql.verifier import verify_decompiled_sql
     from utils.inference_utils import build_verifier_generate_fn
-    from src.finverisql.fsir_builder import build_fsir, render_fsir_for_verifier
 
 
 DEFAULT_SCHEMA_PATH = "data/booksql/schema_annotations.json"
-DEFAULT_MODEL_NAME = "mlx-community/gemma-4-e4b-it-4bit"
+DEFAULT_MODEL_NAME = "mlx-community/Llama-3.1-8B-Instruct-4bit"
 
 
 def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
@@ -47,6 +122,7 @@ def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
     with path.open("r", encoding="utf-8") as f:
         for line_number, line in enumerate(f, start=1):
             line = line.strip()
+
             if not line:
                 continue
 
@@ -67,6 +143,54 @@ def append_jsonl(path: str | Path, row: dict[str, Any]) -> None:
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
         f.flush()
+
+
+def to_jsonable(obj: Any) -> Any:
+    """
+    Convert dataclass-like outputs to JSON-serialisable objects.
+    """
+    if obj is None:
+        return None
+
+    if hasattr(obj, "to_dict") and callable(obj.to_dict):
+        return to_jsonable(obj.to_dict())
+
+    if isinstance(obj, dict):
+        return {str(k): to_jsonable(v) for k, v in obj.items()}
+
+    if isinstance(obj, list):
+        return [to_jsonable(v) for v in obj]
+
+    if isinstance(obj, tuple):
+        return [to_jsonable(v) for v in obj]
+
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+
+    return str(obj)
+
+
+def render_json_profile(profile: dict[str, Any]) -> str:
+    """
+    Render execution profile as stable JSON for the verifier prompt.
+    """
+    return json.dumps(
+        profile,
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    )
+
+
+def stable_sql_hash(sql: Any) -> str:
+    """
+    Stable short hash for generated SQL.
+
+    This prevents resume collisions when multiple generated SQLs share the same
+    question_id, generator, and prompt setting.
+    """
+    text = str(sql or "")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
 def get_evaluation_group(row: dict[str, Any]) -> str | None:
@@ -100,12 +224,15 @@ def get_run_key(
     verifier_model: str,
     question_key: str,
     sql_key: str,
-) -> tuple[str, str | None, str | None, str | None, str]:
+    profile_mode: str,
+) -> tuple[str, str | None, str | None, str | None, str, str, str]:
     question_id = str(
         row.get("question_id")
         or row.get("id")
         or row.get(question_key)
     )
+
+    generated_sql = row.get(sql_key)
 
     return (
         question_id,
@@ -113,23 +240,28 @@ def get_run_key(
         row.get("prompt_setting"),
         get_evaluation_group(row),
         verifier_model,
+        profile_mode,
+        stable_sql_hash(generated_sql),
     )
 
 
 def load_completed_keys(
     output_path: str | Path,
-) -> set[tuple[str, str | None, str | None, str | None, str]]:
+) -> set[tuple[str, str | None, str | None, str | None, str, str, str]]:
     output_path = Path(output_path)
 
     if not output_path.exists():
         return set()
 
-    completed: set[tuple[str, str | None, str | None, str | None, str]] = set()
+    completed: set[
+        tuple[str, str | None, str | None, str | None, str, str, str]
+    ] = set()
 
     with output_path.open("r", encoding="utf-8") as f:
         for line in f:
             try:
                 row = json.loads(line)
+
                 completed.add(
                     (
                         str(row.get("question_id") or row.get("id")),
@@ -137,6 +269,9 @@ def load_completed_keys(
                         row.get("prompt_setting"),
                         row.get("evaluation_group"),
                         row.get("verifier_model"),
+                        row.get("profile_format") or "unknown",
+                        row.get("generated_sql_hash")
+                        or stable_sql_hash(row.get("generated_sql")),
                     )
                 )
             except Exception:
@@ -144,126 +279,79 @@ def load_completed_keys(
 
     return completed
 
-def load_completed_question_ids(output_path: str | Path) -> set[str]:
-    """
-    Resume helper for verifier runs.
-
-    If a question_id already appears in the output JSONL, treat it as done.
-    This is intentionally less strict than load_completed_keys().
-    """
-    output_path = Path(output_path)
-
-    if not output_path.exists():
-        return set()
-
-    completed: set[str] = set()
-
-    with output_path.open("r", encoding="utf-8") as f:
-        for line in f:
-            try:
-                row = json.loads(line)
-                question_id = row.get("question_id") or row.get("id")
-
-                if question_id is not None:
-                    completed.add(str(question_id))
-
-            except Exception:
-                continue
-
-    return completed
 
 def build_execution_profile(
     generated_sql: str,
     schema_store: SchemaAnnotationStore,
-) -> tuple[str, str | None]:
+    profile_mode: str,
+) -> str:
     """
-    Build the verifier-facing FSIR profile, the old text decompiler
-    is kept as debug evidence.
+    Build the verifier-facing execution profile according to the ablation mode.
 
-    Returns:
-        execution_profile:
-            FSIR JSON string passed to the verifier.
-
-        debug_decompiled_profile:
-            Old human-readable decompiler output for debugging only.
+    profile_mode options:
+    - ast: parsed SQL AST only
+    - semantic: full schema-grounded semantic profile
+    - compact: compact verifier payload derived from semantic profile
     """
     try:
         parsed_sql = parse_sql(generated_sql)
+        parsed_dict = to_jsonable(parsed_sql)
+
+        if profile_mode == "ast":
+            execution_profile = {
+                "status": "OK",
+                "profile_type": "parsed_ast",
+                "parsed_sql": parsed_dict,
+            }
+
+            return render_json_profile(execution_profile)
+
         semantics = build_sql_financial_semantics(
             parsed_sql=parsed_sql,
             schema_store=schema_store,
         )
+        semantic_dict = to_jsonable(semantics)
 
-        fsir = build_fsir(semantics)
-        execution_profile = render_fsir_for_verifier(fsir)
+        if profile_mode == "semantic":
+            execution_profile = {
+                "status": "OK",
+                "profile_type": "semantic_profile",
+                **semantic_dict,
+            }
 
-        try:
-            debug_decompiled_profile = decompile_semantics(semantics)
-        except Exception as debug_exc:
-            debug_decompiled_profile = (
-                "[Status] DEBUG_DECOMPILER_FAILED\n"
-                f"{type(debug_exc).__name__}: {debug_exc}"
-            )
+            return render_json_profile(execution_profile)
 
-        return execution_profile, debug_decompiled_profile
+        if profile_mode == "compact":
+            compact_payload = build_verifier_payload(semantics)
+
+            execution_profile = {
+                "status": "OK",
+                "profile_type": "compact_semantic_profile",
+                **compact_payload,
+            }
+
+            return render_json_profile(execution_profile)
+
+        raise ValueError(f"Unsupported profile_mode: {profile_mode}")
 
     except Exception as exc:
         error_profile = {
             "status": "PARSE_ERROR",
-            "profile_extraction": {
-                "status": "PARSE_ERROR",
-                "unsupported_features": [],
-                "extraction_warnings": [
-                    f"SQL parse/FSIR pipeline failed before verification: {type(exc).__name__}: {exc}"
-                ],
-            },
-            "financial_concept_layer": {
-                "scope_constraints": [],
-                "scope_coverage": {
-                    "has_scope_constraints": False,
-                    "status": "unknown_due_to_parse_error",
-                    "ambiguous_scope_count": 0,
-                    "note": "No scope constraints can be extracted from a parse error.",
-                },
-            },
-            "measurement_layer": {
-                "measurements": [],
-            },
-            "reporting_topology_layer": {
-                "analytical_grain": "unknown",
-                "grouping_dimensions": [],
-                "temporal_resolution": {
-                    "source_dialect": "sqlite",
-                    "parser_scope": "sqlite_date_arithmetic",
-                    "representation_level": "symbolic_temporal_boundary",
-                    "date_predicates": [],
-                    "normalization_status": "unknown",
-                },
-                "filter_topology": {
-                    "where_measure_threshold_filters": [],
-                    "post_aggregation_filters": [],
-                    "post_aggregation_filter_extraction_status": "not_supported_in_fsir_v0",
-                    "threshold_filtering_risk": "unknown_due_to_parse_error",
-                },
-                "ordering": [],
-                "limit": None,
-            },
+            "profile_type": profile_mode,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+            "warnings": [
+                "SQL parse/profile pipeline failed before verification: "
+                f"{type(exc).__name__}: {exc}"
+            ],
         }
 
-        return (
-            json.dumps(error_profile, ensure_ascii=False, indent=2, sort_keys=True),
-            (
-                "[Status] PARSE_ERROR\n"
-                f"SQL parse/FSIR pipeline failed before verification: {type(exc).__name__}: {exc}"
-            ),
-        )
+        return render_json_profile(error_profile)
 
 
 def detect_profile_status(execution_profile: str) -> str | None:
     """
-    Supports both:
-    - old text decompiler profiles with [Status]
-    - new FSIR JSON profiles with status/profile_extraction.status
+    Detect profile extraction status from JSON execution profiles.
     """
     try:
         parsed = json.loads(execution_profile)
@@ -272,8 +360,8 @@ def detect_profile_status(execution_profile: str) -> str | None:
             profile_extraction = parsed.get("profile_extraction") or {}
 
             return (
-                profile_extraction.get("status")
-                or parsed.get("status")
+                parsed.get("status")
+                or profile_extraction.get("status")
             )
 
     except Exception:
@@ -293,7 +381,7 @@ def make_output_row(
     execution_profile: str,
     verification_result: dict[str, Any],
     verifier_model: str,
-    debug_decompiled_profile: str | None = None,
+    profile_format: str,
 ) -> dict[str, Any]:
     return {
         "question_id": source_row.get("question_id") or source_row.get("id"),
@@ -306,12 +394,12 @@ def make_output_row(
         "question": question,
         "gold_sql": source_row.get("gold_sql"),
         "generated_sql": generated_sql,
+        "generated_sql_hash": stable_sql_hash(generated_sql),
         "execution_profile": execution_profile,
         "profile_status": detect_profile_status(execution_profile),
         "verifier_model": verifier_model,
         "verification": verification_result,
-        "debug_decompiled_profile": debug_decompiled_profile,
-        "profile_format": "fsir_json",
+        "profile_format": profile_format,
     }
 
 
@@ -330,18 +418,20 @@ def run_verification(args: argparse.Namespace) -> None:
     if args.limit is not None:
         rows = rows[: args.limit]
 
-        completed_question_ids = load_completed_question_ids(output_path)
+    completed_keys = load_completed_keys(output_path)
 
     pending_rows: list[dict[str, Any]] = []
 
     for row in rows:
-        question_id = str(
-            row.get("question_id")
-            or row.get("id")
-            or row.get(args.question_key)
+        run_key = get_run_key(
+            row=row,
+            verifier_model=args.model_name,
+            question_key=args.question_key,
+            sql_key=args.sql_key,
+            profile_mode=args.profile_mode,
         )
 
-        if not args.overwrite and question_id in completed_question_ids:
+        if not args.overwrite and run_key in completed_keys:
             continue
 
         pending_rows.append(row)
@@ -351,6 +441,7 @@ def run_verification(args: argparse.Namespace) -> None:
     print(f"Pending rows: {len(pending_rows)}")
     print(f"Verifier backend: {args.backend}")
     print(f"Verifier model: {args.model_name}")
+    print(f"Profile mode: {args.profile_mode}")
 
     if not pending_rows:
         print("Nothing left to verify.")
@@ -377,9 +468,10 @@ def run_verification(args: argparse.Namespace) -> None:
             question = get_question(row, args.question_key)
             generated_sql = get_generated_sql(row, args.sql_key)
 
-            execution_profile, debug_decompiled_profile = build_execution_profile(
+            execution_profile = build_execution_profile(
                 generated_sql=generated_sql,
                 schema_store=schema_store,
+                profile_mode=args.profile_mode,
             )
 
             verification = verify_decompiled_sql(
@@ -393,9 +485,9 @@ def run_verification(args: argparse.Namespace) -> None:
                 question=question,
                 generated_sql=generated_sql,
                 execution_profile=execution_profile,
-                debug_decompiled_profile=debug_decompiled_profile,
                 verification_result=verification.to_dict(),
                 verifier_model=args.model_name,
+                profile_format=args.profile_mode,
             )
 
             output_row["status"] = "success"
@@ -413,18 +505,27 @@ def run_verification(args: argparse.Namespace) -> None:
                 "question": row.get(args.question_key),
                 "gold_sql": row.get("gold_sql"),
                 "generated_sql": row.get(args.sql_key),
+                "generated_sql_hash": stable_sql_hash(row.get(args.sql_key)),
                 "execution_profile": None,
                 "profile_status": None,
                 "verifier_model": args.model_name,
                 "verification": None,
-                "debug_decompiled_profile": None,
-                "profile_format": "fsir_json",
+                "profile_format": args.profile_mode,
                 "status": "failed",
                 "error": str(exc),
             }
 
         append_jsonl(output_path, output_row)
-        completed_question_ids.add(question_id)
+
+        completed_keys.add(
+            get_run_key(
+                row=row,
+                verifier_model=args.model_name,
+                question_key=args.question_key,
+                sql_key=args.sql_key,
+                profile_mode=args.profile_mode,
+            )
+        )
 
     print(f"Saved verification outputs to: {output_path}")
 
@@ -450,9 +551,23 @@ def parse_args() -> argparse.Namespace:
         help="Path to schema annotation JSON.",
     )
     parser.add_argument(
+        "--profile-mode",
+        choices=["ast", "semantic", "compact"],
+        default="compact",
+        help=(
+            "Verifier input profile for ablation. "
+            "'ast' passes parsed SQL AST only; "
+            "'semantic' passes the full schema-grounded semantic profile; "
+            "'compact' passes the compact semantic verifier payload."
+        ),
+    )
+    parser.add_argument(
         "--model-name",
         default=DEFAULT_MODEL_NAME,
-        help="Verifier model name. Hugging Face MLX models use mlx-community/...; Ollama models use tag names like deepseek-r1:8b.",
+        help=(
+            "Verifier model name. Hugging Face MLX models use mlx-community/...; "
+            "Ollama models use tag names like deepseek-r1:8b."
+        ),
     )
     parser.add_argument(
         "--temperature",
@@ -496,15 +611,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="Do not skip rows already present in output path.",
+        help=(
+            "Do not skip rows already present in output path. "
+            "This appends duplicate rows; it does not delete or replace the file."
+        ),
     )
-
     parser.add_argument(
         "--backend",
         choices=["auto", "ollama", "mlx-lm", "mlx-vlm"],
         default="auto",
-        help="Verifier backend. Use 'auto' to infer from model name, or explicitly choose ollama, mlx-lm, or mlx-vlm.",
+        help=(
+            "Verifier backend. Use 'auto' to infer from model name, or explicitly "
+            "choose ollama, mlx-lm, or mlx-vlm."
+        ),
     )
+
     return parser.parse_args()
 
 
