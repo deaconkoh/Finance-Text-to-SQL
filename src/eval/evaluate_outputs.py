@@ -80,6 +80,17 @@ thread_local = threading.local()
 
 
 def str_to_bool(value: str | bool) -> bool:
+    """Parse a CLI boolean value.
+
+    Args:
+        value: Boolean or string value from argparse.
+
+    Returns:
+        Parsed boolean.
+
+    Raises:
+        argparse.ArgumentTypeError: If the string is not a recognized boolean.
+    """
     if isinstance(value, bool):
         return value
 
@@ -95,6 +106,11 @@ def str_to_bool(value: str | bool) -> bool:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for SQL execution evaluation.
+
+    Returns:
+        Parsed argparse namespace.
+    """
     parser = argparse.ArgumentParser(
         description="Evaluate BookSQL baseline JSONL outputs by SQL execution in parallel.",
     )
@@ -192,6 +208,17 @@ def parse_args() -> argparse.Namespace:
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
+    """Read baseline JSONL rows.
+
+    Args:
+        path: Input JSONL file path.
+
+    Returns:
+        List of parsed row dictionaries.
+
+    Raises:
+        ValueError: If any non-empty line is invalid JSON or not an object.
+    """
     rows: list[dict[str, Any]] = []
 
     with path.open("r", encoding="utf-8") as f:
@@ -223,6 +250,20 @@ def apply_subset(
     subset_start: int,
     subset_size: int,
 ) -> tuple[list[dict[str, Any]], int]:
+    """Optionally slice evaluation rows for smoke tests.
+
+    Args:
+        rows: Full input rows.
+        evaluate_subset: Whether to evaluate a subset.
+        subset_start: Zero-based start index.
+        subset_size: Number of rows to keep.
+
+    Returns:
+        Tuple of selected rows and original row count.
+
+    Raises:
+        ValueError: If subset bounds are invalid.
+    """
     original_num_rows = len(rows)
 
     if not evaluate_subset:
@@ -247,6 +288,15 @@ def apply_subset(
 
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    """Write dictionaries to a JSONL file.
+
+    Args:
+        path: Output JSONL path.
+        rows: Rows to serialize.
+
+    Returns:
+        None.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with path.open("w", encoding="utf-8") as f:
@@ -255,6 +305,15 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
+    """Write a JSON dictionary to disk.
+
+    Args:
+        path: Output JSON path.
+        data: JSON-serializable dictionary.
+
+    Returns:
+        None.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with path.open("w", encoding="utf-8") as f:
@@ -263,10 +322,16 @@ def write_json(path: Path, data: dict[str, Any]) -> None:
 
 
 def get_thread_local_connection(db_path: str) -> sqlite3.Connection:
-    """
-    Each worker thread gets its own SQLite connection.
+    """Return a SQLite connection scoped to the current worker thread.
 
-    Do not share one SQLite connection across threads.
+    Args:
+        db_path: SQLite database path.
+
+    Returns:
+        Read-only SQLite connection stored on thread-local state.
+
+    Assumption:
+        SQLite connections are not shared across worker threads.
     """
     if not hasattr(thread_local, "conn"):
         conn = sqlite3.connect(db_path)
@@ -277,6 +342,14 @@ def get_thread_local_connection(db_path: str) -> sqlite3.Connection:
 
 
 def has_order_by(sql: Any) -> bool:
+    """Check whether SQL text contains an ORDER BY clause.
+
+    Args:
+        sql: SQL text or scalar.
+
+    Returns:
+        `True` if an ORDER BY clause is detected.
+    """
     if sql is None:
         return False
 
@@ -284,6 +357,14 @@ def has_order_by(sql: Any) -> bool:
 
 
 def make_json_safe(value: Any) -> Any:
+    """Convert SQLite result values into JSON-safe structures.
+
+    Args:
+        value: Arbitrary SQLite result value or nested container.
+
+    Returns:
+        JSON-serializable equivalent.
+    """
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
 
@@ -306,6 +387,15 @@ def result_preview(
     rows: list[tuple[Any, ...]],
     max_rows: int,
 ) -> dict[str, Any]:
+    """Build a bounded JSON-safe preview of SQL result rows.
+
+    Args:
+        rows: Full result rows.
+        max_rows: Maximum rows to include in the preview.
+
+    Returns:
+        Dictionary containing row count, truncation flag, and preview rows.
+    """
     preview_rows = rows[:max_rows]
 
     return {
@@ -316,10 +406,13 @@ def result_preview(
 
 
 def normalise_value_for_compare(value: Any) -> Any:
-    """
-    Normalise values for fast hash-based comparison.
+    """Normalize one SQL result value for comparison.
 
-    Floats are rounded to 6 decimal places to avoid tiny numerical drift.
+    Args:
+        value: SQLite result value.
+
+    Returns:
+        Comparable value, with floats rounded to six decimal places.
     """
     if isinstance(value, float):
         return round(value, 6)
@@ -328,6 +421,14 @@ def normalise_value_for_compare(value: Any) -> Any:
 
 
 def normalise_row_for_compare(row: tuple[Any, ...]) -> tuple[Any, ...]:
+    """Normalize one SQL result row for comparison.
+
+    Args:
+        row: SQLite result row.
+
+    Returns:
+        Tuple of normalized cell values.
+    """
     return tuple(normalise_value_for_compare(value) for value in row)
 
 
@@ -336,11 +437,19 @@ def compare_results(
     generated_rows: list[tuple[Any, ...]],
     order_sensitive: bool,
 ) -> bool:
-    """
-    Compare generated and gold SQL execution results.
+    """Compare generated and gold SQL execution results.
 
-    If gold SQL contains ORDER BY, preserve row order.
-    Otherwise, compare order-insensitively using Counter for speed.
+    Args:
+        gold_rows: Rows returned by gold SQL.
+        generated_rows: Rows returned by generated SQL.
+        order_sensitive: Whether row order must match exactly.
+
+    Returns:
+        `True` when normalized results match.
+
+    Assumption:
+        If gold SQL contains ORDER BY, row order is meaningful. Otherwise rows
+        are compared order-insensitively using `Counter`.
     """
     if len(gold_rows) != len(generated_rows):
         return False
@@ -365,10 +474,20 @@ def execute_sql(
     max_progress_steps: int,
     progress_check_interval: int,
 ) -> tuple[list[tuple[Any, ...]] | None, str | None]:
-    """
-    Execute SQL with a SQLite progress-handler guard.
+    """Execute SQL with a SQLite progress-handler guard.
 
-    This prevents one bad generated SQL query from hanging the whole evaluation.
+    Args:
+        conn: SQLite connection.
+        sql: SQL text to execute.
+        max_progress_steps: Maximum progress-handler callbacks before aborting.
+        progress_check_interval: SQLite VM instruction interval per callback.
+
+    Returns:
+        Tuple of `(rows, error)`. `rows` is `None` when execution fails.
+
+    Edge cases:
+        Empty SQL returns an `empty SQL` error. Queries interrupted by the
+        progress handler return a `query_timeout` error string.
     """
     if sql is None or not str(sql).strip():
         return None, "empty SQL"
@@ -376,6 +495,7 @@ def execute_sql(
     progress_steps = 0
 
     def progress_handler() -> int:
+        """Abort SQLite execution after the configured progress-step limit."""
         nonlocal progress_steps
         progress_steps += 1
 
@@ -406,6 +526,14 @@ def execute_sql(
 
 
 def rows_are_all_null(rows: list[tuple[Any, ...]] | None) -> bool:
+    """Check whether every cell in every result row is null.
+
+    Args:
+        rows: SQL result rows or `None`.
+
+    Returns:
+        `True` only when at least one row exists and all cells are `None`.
+    """
     if not rows:
         return False
 
@@ -418,6 +546,17 @@ def get_ambiguity_flags(
     gold_error: str | None,
     generated_error: str | None,
 ) -> list[str]:
+    """Collect ambiguity/exclusion flags for one evaluated row.
+
+    Args:
+        gold_rows: Gold SQL result rows, if execution succeeded.
+        generated_rows: Generated SQL result rows, if execution succeeded.
+        gold_error: Gold SQL execution error, if any.
+        generated_error: Generated SQL execution error, if any.
+
+    Returns:
+        List of flags describing SQL errors, empty results, or all-null results.
+    """
     flags: list[str] = []
 
     if gold_error:
@@ -452,6 +591,16 @@ def should_place_in_group_d(
     ambiguity_flags: list[str],
     treat_empty_results_as_ambiguous: bool,
 ) -> bool:
+    """Decide whether a row belongs to Group D ambiguous/excluded.
+
+    Args:
+        ambiguity_flags: Flags from `get_ambiguity_flags`.
+        treat_empty_results_as_ambiguous: Whether empty/null result patterns
+            should be excluded from primary metrics.
+
+    Returns:
+        `True` when the row should be assigned to Group D.
+    """
     if "gold_sql_error" in ambiguity_flags:
         return True
 
@@ -475,6 +624,18 @@ def assign_evaluation_group(
     ambiguity_flags: list[str],
     treat_empty_results_as_ambiguous: bool,
 ) -> str:
+    """Assign one of the four BookSQL evaluation groups.
+
+    Args:
+        generated_error: Generated SQL execution error, if any.
+        execution_match: Whether generated and gold results match.
+        ambiguity_flags: Flags from `get_ambiguity_flags`.
+        treat_empty_results_as_ambiguous: Whether empty/null patterns route to
+            Group D.
+
+    Returns:
+        One of `GROUP_A`, `GROUP_B`, `GROUP_C`, or `GROUP_D`.
+    """
     if should_place_in_group_d(
         ambiguity_flags=ambiguity_flags,
         treat_empty_results_as_ambiguous=treat_empty_results_as_ambiguous,
@@ -496,6 +657,17 @@ def build_error_message(
     gold_error: str | None,
     generated_error: str | None,
 ) -> str | None:
+    """Combine baseline and execution errors into one readable message.
+
+    Args:
+        baseline_status: Status emitted by the baseline generator.
+        baseline_error: Error emitted by the baseline generator.
+        gold_error: Gold SQL execution error, if any.
+        generated_error: Generated SQL execution error, if any.
+
+    Returns:
+        Semicolon-separated error message, or `None` when no errors exist.
+    """
     error_parts: list[str] = []
 
     if baseline_status and baseline_status != "success":
@@ -522,6 +694,22 @@ def evaluate_row_worker(
     max_progress_steps: int,
     progress_check_interval: int,
 ) -> dict[str, Any]:
+    """Evaluate one baseline output row against BookSQL SQLite.
+
+    Args:
+        row_index: Original row index used to restore output ordering.
+        row: Baseline JSONL row.
+        db_path: SQLite database path.
+        max_result_preview_rows: Maximum result preview rows to store.
+        treat_empty_results_as_ambiguous: Whether empty/null patterns route to
+            Group D.
+        max_progress_steps: SQLite progress-handler limit.
+        progress_check_interval: SQLite VM instruction interval per callback.
+
+    Returns:
+        Row-level evaluation dictionary with execution statuses, previews,
+        match flag, group assignment, ambiguity flags, and timing.
+    """
     start_time = time.perf_counter()
 
     conn = get_thread_local_connection(db_path)
@@ -547,6 +735,8 @@ def evaluate_row_worker(
 
     execution_match = False
     if gold_error is None and generated_error is None:
+        # Preserve order only when the gold query asks for an ordered result.
+        # Otherwise compare as bags of rows to avoid penalizing harmless order.
         execution_match = compare_results(
             gold_rows=gold_rows if gold_rows is not None else [],
             generated_rows=generated_rows if generated_rows is not None else [],
@@ -622,10 +812,28 @@ def evaluate_row_worker(
 
 
 def safe_rate(numerator: int, denominator: int) -> float:
+    """Compute a rate with zero-denominator protection.
+
+    Args:
+        numerator: Numerator count.
+        denominator: Denominator count.
+
+    Returns:
+        `numerator / denominator`, or `0.0` when denominator is zero.
+    """
     return numerator / denominator if denominator else 0.0
 
 
 def build_metrics(evaluated_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build summary metrics from row-level evaluation outputs.
+
+    Args:
+        evaluated_rows: Row-level dictionaries from `evaluate_row_worker`.
+
+    Returns:
+        Summary metrics dictionary with group counts, execution accuracy, valid
+        SQL rate, executable-wrong rate, and slowest-row diagnostics.
+    """
     total = len(evaluated_rows)
 
     group_counts = Counter(row["evaluation_group"] for row in evaluated_rows)
@@ -688,6 +896,14 @@ def build_metrics(evaluated_rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def remove_internal_fields(row: dict[str, Any]) -> dict[str, Any]:
+    """Drop internal helper fields before writing row-level JSONL output.
+
+    Args:
+        row: Evaluation row containing internal keys such as `_row_index`.
+
+    Returns:
+        Copy of the row without underscore-prefixed keys.
+    """
     return {
         key: value
         for key, value in row.items()
@@ -696,6 +912,11 @@ def remove_internal_fields(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> None:
+    """CLI entrypoint for parallel BookSQL SQL execution evaluation.
+
+    Returns:
+        None. Writes row-level evaluated JSONL and summary metrics JSON.
+    """
     args = parse_args()
 
     input_jsonl = Path(args.input_jsonl)

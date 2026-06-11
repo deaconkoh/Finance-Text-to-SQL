@@ -102,17 +102,33 @@ DEFAULT_N_THREADS = 4
 
 
 def normalize_level(value: Any) -> str:
+    """Normalize BookSQL difficulty levels.
+
+    Args:
+        value: Raw level value from a BookSQL record.
+
+    Returns:
+        Lowercase stripped level string.
+    """
     return str(value).strip().lower()
 
 
 def select_few_shot_examples(
     train_records: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """
-    Select exactly 3 deterministic few-shot examples from the train split:
-    one easy, one medium, and one hard.
+    """Select exactly three deterministic few-shot examples.
 
-    The first available example for each level is used for reproducibility.
+    Args:
+        train_records: Prepared BookSQL records, usually from the train split.
+
+    Returns:
+        Three example dictionaries in easy, medium, hard order.
+
+    Raises:
+        ValueError: If at least one required level is missing.
+
+    Assumption:
+        The first available example for each level is used for reproducibility.
     """
     required_levels = ("easy", "medium", "hard")
     selected_by_level: dict[str, dict[str, Any]] = {}
@@ -159,6 +175,28 @@ def run_baseline_inference(
     prompt_setting: str = DEFAULT_PROMPT_SETTING,
     few_shot_examples: list[dict[str, Any]] | None = None,
 ) -> None:
+    """Run append-only baseline inference over prepared BookSQL records.
+
+    Args:
+        records: Inference records with question, schema, gold SQL, split, and
+            level fields.
+        output_path: JSONL output path to append/resume.
+        generator: Generator key such as `qwen` or `arctic`.
+        generate_fn: Callable that maps a prompt string to raw model output.
+        model_metadata: Metadata stored in each output row.
+        prompt_setting: `zero_shot` or `few_shot`.
+        few_shot_examples: Required three examples for few-shot mode.
+
+    Returns:
+        None. Rows are appended to `output_path`.
+
+    Raises:
+        ValueError: If prompt configuration is invalid.
+
+    Edge cases:
+        Completed `(question_id, generator, prompt_setting)` keys are skipped so
+        long local runs can resume safely.
+    """
     if prompt_setting not in {"zero_shot", "few_shot"}:
         raise ValueError(f"Unsupported prompt setting: {prompt_setting}")
 
@@ -189,6 +227,8 @@ def run_baseline_inference(
                     )
 
                 raw_output = generate_fn(prompt)
+                # Keep raw_output untouched for auditability; generated_sql is
+                # the cleaned field used by evaluation and parsing.
                 generated_sql = extract_sql(raw_output)
 
                 result = {
@@ -238,6 +278,11 @@ def run_baseline_inference(
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for baseline generation.
+
+    Returns:
+        Parsed argparse namespace.
+    """
     parser = argparse.ArgumentParser(
         description="Run a frozen BookSQL Text-to-SQL baseline.",
     )
@@ -368,6 +413,15 @@ def parse_args() -> argparse.Namespace:
 
 
 def resolve_output_path(args: argparse.Namespace) -> Path:
+    """Resolve the append/resume JSONL output path.
+
+    Args:
+        args: Parsed CLI arguments.
+
+    Returns:
+        Explicit `--output-path` when provided, otherwise the default
+        `data/outputs/baseline_{model}_{split}_{prompt_setting}.jsonl`.
+    """
     if args.output_path:
         return Path(args.output_path)
 
@@ -379,6 +433,19 @@ def resolve_output_path(args: argparse.Namespace) -> Path:
 
 
 def resolve_arctic_model_path(args: argparse.Namespace) -> str:
+    """Resolve the Arctic GGUF model path.
+
+    Args:
+        args: Parsed CLI arguments containing optional local path or Hugging
+            Face repo/filename.
+
+    Returns:
+        Local model file path, downloading through Hugging Face cache when no
+        explicit path is provided.
+
+    Raises:
+        FileNotFoundError: If `--model-path` is provided but does not exist.
+    """
     if args.model_path is not None:
         model_path = Path(args.model_path)
 
@@ -403,6 +470,18 @@ def resolve_arctic_model_path(args: argparse.Namespace) -> str:
 def build_qwen_runner(
     args: argparse.Namespace,
 ) -> tuple[str, Callable[[str], str], dict[str, Any]]:
+    """Load Qwen through MLX and return a baseline generation runner.
+
+    Args:
+        args: Parsed CLI arguments, including `max_new_tokens`.
+
+    Returns:
+        Tuple of generator key, generation callable, and model metadata.
+
+    Assumption:
+        The local environment has `mlx_lm` installed and can load the configured
+        4-bit Qwen model.
+    """
     from mlx_lm import load
 
     try:
@@ -414,6 +493,7 @@ def build_qwen_runner(
     model, tokenizer = load(QWEN_MODEL_NAME)
 
     def generate_fn(prompt: str) -> str:
+        """Generate one Qwen baseline response with the loaded MLX model."""
         return generate_mlx_output(
             model=model,
             tokenizer=tokenizer,
@@ -432,6 +512,19 @@ def build_qwen_runner(
 def build_arctic_runner(
     args: argparse.Namespace,
 ) -> tuple[str, Callable[[str], str], dict[str, Any]]:
+    """Load Arctic Text2SQL through llama.cpp and return a runner.
+
+    Args:
+        args: Parsed CLI arguments containing GGUF path/download settings and
+            llama.cpp runtime configuration.
+
+    Returns:
+        Tuple of generator key, generation callable, and model metadata.
+
+    Assumption:
+        The environment has `llama_cpp` installed and the GGUF file is available
+        locally or through Hugging Face cache.
+    """
     from llama_cpp import Llama
 
     try:
@@ -456,6 +549,7 @@ def build_arctic_runner(
     )
 
     def generate_fn(prompt: str) -> str:
+        """Generate one Arctic baseline response with the loaded GGUF model."""
         return generate_llama_cpp_output(
             llm=llm,
             prompt=prompt,
@@ -477,6 +571,18 @@ def build_arctic_runner(
 
 
 def load_inference_records(args: argparse.Namespace) -> list[dict[str, Any]]:
+    """Load and optionally filter BookSQL inference records.
+
+    Args:
+        args: Parsed CLI arguments controlling split, data path, question IDs,
+            and optional limit.
+
+    Returns:
+        Prepared records for baseline generation.
+
+    Raises:
+        ValueError: If no records are loaded or `--limit` is invalid.
+    """
     requested_split = None if args.split == "all" else args.split
 
     print("Loading BookSQL inference records...")
@@ -515,6 +621,14 @@ def load_inference_records(args: argparse.Namespace) -> list[dict[str, Any]]:
 def load_few_shot_examples(
     args: argparse.Namespace,
 ) -> list[dict[str, Any]] | None:
+    """Load deterministic few-shot examples when requested.
+
+    Args:
+        args: Parsed CLI arguments.
+
+    Returns:
+        Three few-shot examples for `few_shot` mode, otherwise `None`.
+    """
     if args.prompt_setting != "few_shot":
         return None
 
@@ -542,6 +656,11 @@ def load_few_shot_examples(
 
 
 def main() -> None:
+    """CLI entrypoint for frozen baseline generation.
+
+    Returns:
+        None. Writes append-only JSONL output through `run_baseline_inference`.
+    """
     args = parse_args()
 
     output_path = resolve_output_path(args)

@@ -1,3 +1,36 @@
+"""Two-stage finance-aware semantic verifier for FinVeriSQL.
+
+This module receives:
+- a natural-language financial question
+- a verifier-facing execution profile describing what the generated SQL computes
+- an LLM generation function
+
+Verifier design:
+- Stage 1 performs accept / reject / abstain verification.
+- Stage 1 also classifies the primary semantic mismatch when the SQL is rejected.
+- Stage 2 runs only after a Stage 1 rejection and generates a repair hint.
+- Stage 2 does not reclassify and does not generate corrected SQL.
+
+Mismatch taxonomy:
+- financial_object_error
+  D1: What is being measured?
+  Wrong financial object, account class, entity, transaction event, product/service,
+  payment status, or financial statement element.
+
+- financial_measure_error
+  D2: How is it measured?
+  Wrong physical measure, aggregation, quantity/count interpretation, debit/credit
+  direction, monetary vector, or unit.
+
+- computation_logic_error
+  D3: Over what scope, period, granularity, or computation?
+  Wrong grouping, temporal period, analytical grain, ranking, ordering, limit,
+  distinctness, threshold logic, or formula.
+
+The verifier is descriptive-and-checking only. It does not execute SQL, inspect
+gold SQL, regenerate SQL, or infer a full expected query.
+"""
+
 from __future__ import annotations
 
 import json
@@ -24,12 +57,30 @@ VALID_CONFIDENCE_LEVELS = {
     "low",
 }
 
+VALID_EVIDENCE_MATCHES = {
+    "sufficient",
+    "insufficient",
+    "unclear",
+}
+
+VALID_DIAGNOSTIC_STATUSES = {
+    "supported",
+    "weak",
+    "missing",
+    "contradicted",
+}
+
+
 class MaxTokensReachedError(Exception):
-    """Raised when the LLM generation terminates due to hitting the max token limit."""
+    """Raised when LLM generation terminates because the max token limit is hit."""
+
     pass
+
 
 @dataclass
 class VerificationResult:
+    """Normalized output from the two-stage verifier."""
+
     answers_question: bool | None
     mismatch_type: str | None
     mismatch_detail: str | None
@@ -43,93 +94,197 @@ class VerificationResult:
     invalid_mismatch_type: str | None = None
     error: str | None = None
 
-    # Debug fields for the two-stage verifier.
+    # Stage 1 debug fields.
     stage1_answers_question: bool | None = None
     stage1_ambiguous: bool | None = None
     stage2_ran: bool = False
+    stage1_evidence_match: str | None = None
+    stage1_primary_mismatch_type: str | None = None
+    stage1_mismatch_detail: str | None = None
+    stage1_failed_evidence: list[str] | None = None
+    stage1_diagnostic_dimensions: dict[str, str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Return the result as a plain JSON-serialisable dictionary."""
         return asdict(self)
 
 
 def detect_profile_status(execution_profile: str) -> str | None:
-    for line in execution_profile.splitlines():
-        if line.startswith("[Status]"):
-            return line.replace("[Status]", "").strip()
+    """Detect profile-level statuses that should bypass LLM verification."""
+    text = execution_profile.strip()
+
+    try:
+        parsed = json.loads(text)
+
+        if isinstance(parsed, dict):
+            top_status = parsed.get("status")
+
+            if top_status in ABSTAIN_STATUSES:
+                return top_status
+
+            if parsed.get("unsupported_lineage") is True:
+                return "UNSUPPORTED_LINEAGE"
+
+            profile_extraction = parsed.get("profile_extraction") or {}
+
+            if isinstance(profile_extraction, dict):
+                extraction_status = profile_extraction.get("status")
+
+                if extraction_status in ABSTAIN_STATUSES:
+                    return extraction_status
+
+                unsupported_features = profile_extraction.get("unsupported_features") or []
+
+                if "unsupported_lineage" in unsupported_features:
+                    return "UNSUPPORTED_LINEAGE"
+
+    except json.JSONDecodeError:
+        pass
+
     return None
 
 
 def build_stage1_verdict_prompt(question: str, execution_profile: str) -> str:
     return f"""
-You are a finance-aware SQL semantic verifier.
+You are a finance-aware SQL semantic equivalence verifier.
 
-Task:
-Decide whether the DECOMPILED SQL EXECUTION PROFILE answers the USER QUESTION.
-You do not see raw SQL, gold SQL, execution results, or database contents.
-Treat the execution profile as the full meaning of the candidate SQL.
+Your task is to compare the user's financial question against the compact semantic profile of the generated SQL.
 
-Output:
-Return ONLY this JSON object — no explanation, no error classification, no repair hint:
+The compact semantic profile describes what the generated SQL computes.
+It is not gold SQL.
+It is not the expected answer.
+
+You must compare meaning across three dimensions:
+
+D1 Financial Object:
+What business/financial object is being measured?
+Examples: customer, vendor, product/service, invoice, bill, payment, revenue, expense, asset, liability, unpaid status.
+
+D2 Financial Measure:
+How is it measured?
+Examples: SUM(Quantity), COUNT(Transaction_ID), COUNT(*), SUM(Debit), SUM(Credit), SUM(Amount), AVG(Credit).
+
+D3 Computation Logic:
+Over what scope, period, grouping, ranking, or granularity?
+Examples: by customer, by vendor, monthly, year_to_date, trailing_12_months, top 1, latest, distinct transaction count.
+
+Your job is NOT just to check whether evidence exists.
+Your job is to decide whether the compact profile has the same financial meaning as the user question.
+
+Return ONLY this JSON object:
 {{
+  "dimension_alignment": {{
+    "financial_object": "same | different | unclear",
+    "financial_measure": "same | different | unclear",
+    "computation_logic": "same | different | unclear"
+  }},
+  
+  "evidence_match": "sufficient | insufficient | unclear",
   "answers_question": true | false | null,
-  "ambiguous": true | false
+  "ambiguous": true | false,
+  "primary_mismatch_type": "financial_object_error | financial_measure_error | computation_logic_error | null",
+  "mismatch_detail": "",
+  "failed_evidence": [],
+  "confidence": "high | medium | low"
 }}
 
 Decision rules:
-- true: profile satisfies all main required dimensions of the question.
-- false: clear semantic mismatch or clearly wrong required dimension.
-- null: profile is incomplete or under-specified, but not clearly wrong.
-- ambiguous=true: question or profile is genuinely unclear; insufficient evidence to judge.
-- Do not reject for missing minor supporting evidence that is not required by the question.
-- However, if the missing or wrong evidence changes the financial meaning of the answer, treat it as a clear mismatch.
-- Central dimensions include the requested financial object, transaction scope, entity role, measure, time period, and computation logic.
-- Do not invent dimensions not shown in the profile; do not accept based on partial overlap alone.
+- If all answer-changing dimensions are "same", return evidence_match="sufficient" and answers_question=true.
+- If any answer-changing dimension is "different", return evidence_match="insufficient" and answers_question=false.
+- If a required dimension cannot be determined from the compact profile, return evidence_match="unclear" unless the missing evidence clearly changes the answer.
+- Do not reject because of a missing secondary boundary if the question meaning and profile meaning are still equivalent.
+- Do not accept based on partial overlap if the measure or computation means something different.
 
-Financial checking guide:
-- Row count, quantity, gross amount, debit, credit, payable, receivable, sales, and expense are not interchangeable.
-- Product/service scope does not satisfy account/category scope.
-- A payment status flag alone does not establish AP/AR/account scope.
-- Raw transaction rows are not sufficient when the question asks for an aggregate financial measure.
-- Correct column or filter is not enough if the computation is at the wrong granularity.
+Important BookSQL meaning rules:
+- "How many [product/service] did we sell?" means quantity sold. It requires Quantity or quantity-compatible measurement.
+- COUNT(*), COUNT(Transaction_ID), or COUNT(DISTINCT Transaction_ID) means number of rows/transactions, not quantity sold.
+- "How many times did we sell [product/service]?" means transaction/event count. COUNT(DISTINCT Transaction_ID) can be equivalent.
+- "Number of invoices/bills/payments" means count of those transaction objects. It should not be treated as quantity sold.
+- "Spend", "cost", or "expense" usually requires Debit or expense-compatible monetary measurement.
+- "Revenue" or "sales amount" usually requires Credit or revenue-compatible monetary measurement.
+- "Amount" is not automatically equivalent to Debit or Credit when financial direction matters.
+- "Monthly" or "by month" means month-level grouping. A current-month date filter alone is not monthly grouping.
+- "This fiscal year" is not automatically equivalent to trailing_1_year.
+- "Year to date", "month to date", and "week to date" should match the period_hint when available.
 
-Error taxonomy (for your reference when assessing mismatches):
-- financial_object_error: wrong object, account class, transaction type, entity role, or semantic grounding of a value.
-- financial_measure_error: wrong numeric measure, sign convention, missing aggregate, or raw rows instead of a financial measure.
-- computation_logic_error: wrong aggregation level, grouping, ranking, formula, temporal logic, or output granularity.
-
-Examples:
-
-Example 1 — ACCEPT
-Question: How many invoices are still outstanding for Danielle Lara as of This month?
-Profile: COUNT(DISTINCT transaction_id), transaction type: invoice, customer: danielle lara, AR_paid=No, transaction_date from start of current month to now.
-Verdict: true — all required dimensions satisfied (count, invoice scope, customer filter, unpaid status, current-month period).
-{{"answers_question": true, "ambiguous": false}}
-
-Example 2 — REJECT (computation_logic_error)
-Question: Show the minimum, average, maximum order quantity of all invoices.
-Profile: MIN(Quantity), AVG(Quantity), MAX(Quantity), transaction type: invoice, no GROUP BY detected, row-level quantity statistics.
-Verdict: false — correct column and scope, but aggregation is at row level rather than the required business-level order quantity granularity.
-{{"answers_question": false, "ambiguous": false}}
-
-Example 3 — REJECT (financial_object_error)
-Question: When was the first time we received bill for Drilling oil and gas wells?
-Profile: MIN(transaction_date), transaction type: bill, Product_Service = Drilling oil and gas wells.
-Verdict: false — the required value is present but grounded to product/service scope; the question requires it as the financial account/object identifier.
-{{"answers_question": false, "ambiguous": false}}
-
-Example 4 — REJECT (financial_measure_error)
-Question: What are my AP This week to date?
-Profile: No aggregation detected, selected columns: amount, transaction_id, gross amount with no debit/credit direction, AP_paid=Yes.
-Verdict: false — returns raw rows with gross amount instead of an aggregated payable/AP measure; debit/credit direction is absent.
-{{"answers_question": false, "ambiguous": false}}
+Primary mismatch selection:
+- If the object/entity/event/status is different, use financial_object_error.
+- If the measure has a different meaning, use financial_measure_error.
+- If object and measure are mostly correct but period/grouping/ranking/granularity is different, use computation_logic_error.
+- If multiple dimensions differ, choose the one that most directly changes the answer.
 
 Actual case:
 
 User question:
 {question}
 
-Decompiled SQL execution profile:
+Compact semantic profile:
 {execution_profile}
+
+Return only the JSON object.
+""".strip()
+
+
+def build_stage2_repair_prompt(
+    question: str,
+    execution_profile: str,
+    stage1_verdict: dict[str, Any],
+) -> str:
+    """Build the Stage 2 repair-hint prompt.
+
+    Stage 2 only writes repair guidance based on Stage 1. It must not reclassify.
+    """
+    stage1_verdict_json = json.dumps(
+        stage1_verdict,
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+    return f"""
+You are a finance-aware SQL repair planner.
+
+Stage 1 already decided that the candidate SQL does NOT answer the question and already classified the primary mismatch type.
+
+Your task:
+- Generate a concise repair hint for a later SQL repair step.
+- Base the hint on Stage 1 primary_mismatch_type, mismatch_detail, and failed_evidence.
+- Do not reclassify the mismatch type.
+- Do not change the Stage 1 verdict.
+- Do not generate corrected SQL.
+
+Return only valid JSON with exactly these fields:
+{{
+  "repair_hint": "",
+  "confidence": "high | medium | low"
+}}
+
+Examples:
+
+Input primary_mismatch_type: financial_object_error
+Input failed_evidence: ["missing invoice transaction scope", "missing reliable unpaid payment-status evidence"]
+Output:
+{{"repair_hint": "Add or repair the missing business-object filters, such as invoice transaction scope and reliable unpaid/open-balance evidence, while preserving the customer scope.", "confidence": "high"}}
+
+Input primary_mismatch_type: financial_measure_error
+Input failed_evidence: ["missing quantity measure", "row_count is not equivalent to quantity sold"]
+Output:
+{{"repair_hint": "Use the quantity field or quantity-compatible expression for the sold-item measure instead of counting rows, while preserving the product/service scope.", "confidence": "high"}}
+
+Input primary_mismatch_type: computation_logic_error
+Input failed_evidence: ["missing temporal_period grouping for monthly breakdown"]
+Output:
+{{"repair_hint": "Add the required month-level grouping while preserving the vendor scope and spend-compatible measure.", "confidence": "high"}}
+
+Actual case:
+
+User question:
+{question}
+
+Execution profile:
+{execution_profile}
+
+Stage 1 verdict:
+{stage1_verdict_json}
 
 Return only the JSON object.
 """.strip()
@@ -140,142 +295,16 @@ def build_stage2_classification_prompt(
     execution_profile: str,
     stage1_verdict: dict[str, Any],
 ) -> str:
-    stage1_verdict_json = json.dumps(
-        stage1_verdict,
-        ensure_ascii=False,
-        sort_keys=True,
-    )
-
-    return f"""
-You are a finance-aware SQL error classifier.
-
-Stage 1 already decided that the candidate SQL does NOT answer the question.
-
-Your task:
-Classify the PRIMARY financial semantic error and generate a concise repair hint.
-
-Allowed mismatch_type values:
-- financial_object_error
-- financial_measure_error
-- computation_logic_error
-
-Do not output any other mismatch_type.
-
-Definitions:
-- financial_object_error:
-  Wrong or missing financial object, account class, transaction type, business scope, entity scope, product/service scope, customer/vendor scope, account scope, or required literal filter.
-
-- financial_measure_error:
-  Wrong numeric or monetary measure, wrong debit/credit/amount sign convention, wrong quantity/count interpretation, missing aggregate financial measure, or raw rows returned when an aggregate financial measure is required.
-
-- computation_logic_error:
-  Wrong aggregation logic, grouping, ranking, temporal logic, formula, comparison, ordering, limit, or output granularity.
-
-Return only valid JSON with exactly these fields:
-{{
-  "mismatch_type": "financial_object_error",
-  "mismatch_detail": "",
-  "repair_hint": "",
-  "confidence": "high"
-}}
-
-Few-shot examples:
-
-Example 1 — D3 / Computation Logic Constraint
-Question: Show the minimum, average, maximum order quantity of all invoices.
-
-Profile evidence:
-- MIN(Quantity), AVG(Quantity), MAX(Quantity)
-- transaction type: invoice
-- No GROUP BY detected
-
-Dimension-level rule:
-D3 / Computation Logic Constraint covers wrong aggregation order, grouping level, unit of analysis, ranking logic, formula, comparison, temporal computation, or output granularity. A query can use the correct column and object scope but still fail if it computes the answer at the wrong level.
-
-Case application:
-The issue is not the invoice filter. The issue is that the profile computes row-level quantity statistics instead of computing the required business-level order quantity statistics. Therefore, the primary mismatch is D3.
-
-Expected:
-{{
-  "mismatch_type": "computation_logic_error",
-  "mismatch_detail": "The profile applies the aggregation at the wrong granularity. It uses row-level quantity statistics instead of computing the required business-level order quantity logic.",
-  "repair_hint": "Apply the aggregation at the correct business level first, then compute the requested minimum, average, and maximum values.",
-  "confidence": "high"
-}}
-
-Example 2 — D1 / Financial Object Constraint
-Question: When was the first time we received bill for Drilling oil and gas wells?
-
-Profile evidence:
-- MIN(transaction_date)
-- transaction type: bill
-- Product_Service = Drilling oil and gas wells
-
-Dimension-level rule:
-D1 / Financial Object Constraint covers wrong financial object, account class, transaction type, business scope, entity role, schema role, or required literal scope. The same literal value can still be wrong if it is grounded to the wrong semantic role.
-
-Case application:
-The profile uses the target literal as a product/service filter. The question requires the value to identify the relevant financial/account object for the bill. Therefore, the primary mismatch is D1.
-
-Expected:
-{{
-  "mismatch_type": "financial_object_error",
-  "mismatch_detail": "The profile grounds the required value to the wrong semantic role. It uses product/service scope where the question requires the relevant financial/account object scope.",
-  "repair_hint": "Filter using the appropriate financial object, account, or schema role while preserving the bill transaction scope and first-date logic.",
-  "confidence": "high"
-}}
-
-Example 3 — D2 / Financial Measure Constraint
-Question: What are my AP This week to date?
-
-Profile evidence:
-- No aggregation detected
-- Selected columns: amount, transaction_id
-- Measure type: flow
-- Sign convention: gross amount with no debit/credit direction
-- AP_paid = Yes
-- No schema-grounded account type, transaction type, or entity scope filter detected
-
-Dimension-level rule:
-D2 / Financial Measure Constraint covers wrong numeric value, wrong monetary column, wrong sign convention, wrong quantity/count interpretation, missing aggregate financial measure, or returning raw rows when a financial measure is required. Correct filters are not enough if the selected value does not represent the requested financial concept.
-
-Case application:
-The profile returns raw transaction_id and gross amount rows. The question asks for an AP value. Although the profile also lacks full AP/account scope, the main failure is that it does not compute the required payable/AP financial measure. Therefore, the primary mismatch is D2, not merely D1.
-
-Expected:
-{{
-  "mismatch_type": "financial_measure_error",
-  "mismatch_detail": "The profile returns raw transaction_id and gross amount rows instead of computing the required accounts payable financial measure.",
-  "repair_hint": "Use the appropriate AP/payable measure and aggregate it over the requested week-to-date period.",
-  "confidence": "medium"
-}}
-
-Actual case:
-
-User question:
-{question}
-
-Decompiled SQL execution profile:
-{execution_profile}
-
-Stage 1 verdict:
-{stage1_verdict_json}
-
-Return only the JSON object.
-""".strip()
-
-
-# Backward-compatible alias.
-# Older code may still import/call build_verification_prompt().
-# In the two-stage design, this returns the Stage 1 prompt only.
-def build_verification_prompt(question: str, execution_profile: str) -> str:
-    return build_stage1_verdict_prompt(
+    """Backward-compatible alias for the old Stage 2 function name."""
+    return build_stage2_repair_prompt(
         question=question,
         execution_profile=execution_profile,
+        stage1_verdict=stage1_verdict,
     )
 
 
 def parse_verifier_json(raw_output: str) -> dict[str, Any]:
+    """Parse a JSON object from LLM verifier output."""
     if raw_output is None:
         raise ValueError("Verifier output is None.")
 
@@ -290,15 +319,15 @@ def parse_verifier_json(raw_output: str) -> dict[str, Any]:
 
     decoder = json.JSONDecoder()
 
-    # Try parsing the whole output first.
     try:
         parsed = json.loads(text)
+
         if isinstance(parsed, dict):
             return parsed
+
     except json.JSONDecodeError:
         pass
 
-    # Then scan for the first valid JSON object.
     for index, char in enumerate(text):
         if char != "{":
             continue
@@ -307,12 +336,13 @@ def parse_verifier_json(raw_output: str) -> dict[str, Any]:
 
         try:
             parsed, _ = decoder.raw_decode(candidate)
+
             if isinstance(parsed, dict):
                 return parsed
+
         except json.JSONDecodeError:
             continue
 
-    # Final repair attempt for escaped scalar values.
     start = text.find("{")
     end = text.rfind("}")
 
@@ -331,6 +361,7 @@ def parse_verifier_json(raw_output: str) -> dict[str, Any]:
 
 
 def normalise_bool(value: Any) -> bool | None:
+    """Convert common JSON-ish boolean values to True, False, or None."""
     if isinstance(value, bool):
         return value
 
@@ -357,6 +388,7 @@ def normalise_bool(value: Any) -> bool | None:
 
 
 def normalise_optional_str(value: Any) -> str | None:
+    """Convert model-produced strings to stripped text or None."""
     if value is None:
         return None
 
@@ -412,60 +444,168 @@ def _pack_raw_outputs(
     )
 
 
-def normalise_stage1_output(parsed: dict[str, Any]) -> dict[str, Any]:
-    answers_question = normalise_bool(parsed.get("answers_question"))
-
-    ambiguous = normalise_bool(parsed.get("ambiguous"))
-    if ambiguous is None:
-        ambiguous = False
-
-    if ambiguous:
-        return {
-            "answers_question": None,
-            "ambiguous": True,
-        }
-
-    if answers_question is True:
-        return {
-            "answers_question": True,
-            "ambiguous": False,
-        }
-
-    if answers_question is False:
-        return {
-            "answers_question": False,
-            "ambiguous": False,
-        }
-
+def _stage1_evidence_debug(stage1: dict[str, Any]) -> dict[str, Any]:
     return {
-        "answers_question": None,
-        "ambiguous": True,
+        "stage1_evidence_match": stage1.get("evidence_match"),
+        "stage1_primary_mismatch_type": stage1.get("primary_mismatch_type"),
+        "stage1_mismatch_detail": stage1.get("mismatch_detail"),
+        "stage1_failed_evidence": stage1.get("failed_evidence"),
+        "stage1_diagnostic_dimensions": stage1.get("diagnostic_dimensions"),
     }
 
 
-def normalise_stage2_output(parsed: dict[str, Any]) -> dict[str, Any]:
-    mismatch_type, invalid_mismatch_type = _normalise_mismatch_type(
-        parsed.get("mismatch_type")
+def _normalise_evidence_match(value: Any) -> str:
+    raw = normalise_optional_str(value)
+
+    if raw is None:
+        return "unclear"
+
+    evidence_match = raw.lower().strip()
+
+    if evidence_match in VALID_EVIDENCE_MATCHES:
+        return evidence_match
+
+    return "unclear"
+
+
+def _normalise_diagnostic_status(value: Any) -> str:
+    raw = normalise_optional_str(value)
+
+    if raw is None:
+        return "weak"
+
+    status = raw.lower().strip()
+
+    if status in VALID_DIAGNOSTIC_STATUSES:
+        return status
+
+    return "weak"
+
+
+def _normalise_diagnostic_dimensions(value: Any) -> dict[str, str]:
+    dimensions = value if isinstance(value, dict) else {}
+
+    return {
+        "financial_object": _normalise_diagnostic_status(
+            dimensions.get("financial_object")
+        ),
+        "financial_measure": _normalise_diagnostic_status(
+            dimensions.get("financial_measure")
+        ),
+        "computation_logic": _normalise_diagnostic_status(
+            dimensions.get("computation_logic")
+        ),
+    }
+
+
+def _normalise_failed_evidence(value: Any) -> list[str]:
+    if value is None:
+        return []
+
+    if isinstance(value, list):
+        return [
+            item
+            for item in (normalise_optional_str(item) for item in value)
+            if item
+        ]
+
+    text = normalise_optional_str(value)
+
+    return [text] if text else []
+
+
+def normalise_stage1_output(parsed: dict[str, Any]) -> dict[str, Any]:
+    """Normalize and enforce consistency for Stage 1 verifier output.
+
+    `evidence_match` is treated as the source of truth.
+    Diagnostic dimensions are preserved for debugging and are not hard gates.
+    """
+    evidence_match = _normalise_evidence_match(parsed.get("evidence_match"))
+
+    primary_mismatch_type, invalid_mismatch_type = _normalise_mismatch_type(
+        parsed.get("primary_mismatch_type")
     )
 
     mismatch_detail = normalise_optional_str(parsed.get("mismatch_detail"))
-    repair_hint = normalise_optional_str(parsed.get("repair_hint"))
+    failed_evidence = _normalise_failed_evidence(parsed.get("failed_evidence"))
+    diagnostic_dimensions = _normalise_diagnostic_dimensions(
+        parsed.get("diagnostic_dimensions")
+    )
     confidence = _normalise_confidence(parsed.get("confidence")) or "medium"
 
+    if evidence_match == "sufficient":
+        return {
+            "evidence_match": "sufficient",
+            "answers_question": True,
+            "ambiguous": False,
+            "primary_mismatch_type": None,
+            "mismatch_detail": None,
+            "failed_evidence": [],
+            "diagnostic_dimensions": diagnostic_dimensions,
+            "confidence": confidence,
+            "invalid_mismatch_type": None,
+        }
+
+    if evidence_match == "insufficient" and primary_mismatch_type is not None:
+        return {
+            "evidence_match": "insufficient",
+            "answers_question": False,
+            "ambiguous": False,
+            "primary_mismatch_type": primary_mismatch_type,
+            "mismatch_detail": mismatch_detail,
+            "failed_evidence": failed_evidence,
+            "diagnostic_dimensions": diagnostic_dimensions,
+            "confidence": confidence,
+            "invalid_mismatch_type": invalid_mismatch_type,
+        }
+
+    if evidence_match == "insufficient":
+        return {
+            "evidence_match": "insufficient",
+            "answers_question": None,
+            "ambiguous": True,
+            "primary_mismatch_type": None,
+            "mismatch_detail": mismatch_detail,
+            "failed_evidence": failed_evidence,
+            "diagnostic_dimensions": diagnostic_dimensions,
+            "confidence": confidence,
+            "invalid_mismatch_type": invalid_mismatch_type,
+        }
+
     return {
-        "mismatch_type": mismatch_type,
+        "evidence_match": "unclear",
+        "answers_question": None,
+        "ambiguous": True,
+        "primary_mismatch_type": None,
         "mismatch_detail": mismatch_detail,
-        "repair_hint": repair_hint,
+        "failed_evidence": failed_evidence,
+        "diagnostic_dimensions": diagnostic_dimensions,
         "confidence": confidence,
         "invalid_mismatch_type": invalid_mismatch_type,
     }
 
 
-def verify_decompiled_sql(
+def normalise_stage2_output(parsed: dict[str, Any]) -> dict[str, Any]:
+    """Normalize Stage 2 repair-hint output.
+
+    Stage 2 is not allowed to reclassify. Any mismatch fields returned by the
+    model are ignored by the orchestrator.
+    """
+    repair_hint = normalise_optional_str(parsed.get("repair_hint"))
+    confidence = _normalise_confidence(parsed.get("confidence")) or "medium"
+
+    return {
+        "repair_hint": repair_hint,
+        "confidence": confidence,
+    }
+
+
+def verify_execution_profile(
     question: str,
     execution_profile: str,
     llm_generate_fn: Callable[[str], str],
 ) -> VerificationResult:
+    """Run the two-stage semantic verifier over an execution profile."""
     status = detect_profile_status(execution_profile)
 
     if status in ABSTAIN_STATUSES:
@@ -498,8 +638,8 @@ def verify_decompiled_sql(
         stage1_raw_output = llm_generate_fn(stage1_prompt)
         stage1_parsed = parse_verifier_json(stage1_raw_output)
         stage1 = normalise_stage1_output(stage1_parsed)
-    
-    except MaxTokensReachedError as exc:
+
+    except MaxTokensReachedError:
         return VerificationResult(
             answers_question=None,
             mismatch_type=None,
@@ -507,11 +647,11 @@ def verify_decompiled_sql(
             repair_hint=None,
             ambiguous=True,
             should_abstain=True,
-            abstain_reason="stage1_max_tokens_reached", 
+            abstain_reason="stage1_max_tokens_reached",
             confidence=None,
             raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
             invalid_mismatch_type=None,
-            error="Stage 1 LLM generation was truncated due to max tokens limit.",
+            error="Stage 1 LLM generation was truncated due to max token limit.",
             stage1_answers_question=None,
             stage1_ambiguous=None,
             stage2_ran=False,
@@ -544,16 +684,22 @@ def verify_decompiled_sql(
             ambiguous=False,
             should_abstain=False,
             abstain_reason=None,
-            confidence=None,
+            confidence=stage1.get("confidence"),
             raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
             invalid_mismatch_type=None,
             error=None,
             stage1_answers_question=True,
             stage1_ambiguous=False,
             stage2_ran=False,
+            **_stage1_evidence_debug(stage1),
         )
 
     if stage1["answers_question"] is None or stage1["ambiguous"] is True:
+        abstain_reason = "stage1_marked_unclear"
+
+        if stage1.get("evidence_match") == "insufficient":
+            abstain_reason = "invalid_stage1_mismatch_type"
+
         return VerificationResult(
             answers_question=None,
             mismatch_type=None,
@@ -561,18 +707,19 @@ def verify_decompiled_sql(
             repair_hint=None,
             ambiguous=True,
             should_abstain=True,
-            abstain_reason="stage1_marked_ambiguous",
-            confidence="low",
+            abstain_reason=abstain_reason,
+            confidence=stage1.get("confidence") or "low",
             raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
-            invalid_mismatch_type=None,
+            invalid_mismatch_type=stage1.get("invalid_mismatch_type"),
             error=None,
             stage1_answers_question=stage1["answers_question"],
             stage1_ambiguous=stage1["ambiguous"],
             stage2_ran=False,
+            **_stage1_evidence_debug(stage1),
         )
 
     try:
-        stage2_prompt = build_stage2_classification_prompt(
+        stage2_prompt = build_stage2_repair_prompt(
             question=question,
             execution_profile=execution_profile,
             stage1_verdict=stage1,
@@ -582,59 +729,52 @@ def verify_decompiled_sql(
         stage2_parsed = parse_verifier_json(stage2_raw_output)
         stage2 = normalise_stage2_output(stage2_parsed)
 
-        if stage2["mismatch_type"] is None:
-            return VerificationResult(
-                answers_question=None,
-                mismatch_type=None,
-                mismatch_detail=None,
-                repair_hint=None,
-                ambiguous=True,
-                should_abstain=True,
-                abstain_reason="invalid_stage2_mismatch_type",
-                confidence=stage2["confidence"],
-                raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
-                invalid_mismatch_type=stage2["invalid_mismatch_type"],
-                error=(
-                    "Stage 2 did not return a valid mismatch_type. "
-                    "Stage 2 mismatch_detail and repair_hint were suppressed because this row is an abstention. "
-                    "Inspect raw_output for debugging."
-                ),
-                stage1_answers_question=stage1["answers_question"],
-                stage1_ambiguous=stage1["ambiguous"],
-                stage2_ran=True,
-            )
-
         return VerificationResult(
             answers_question=False,
-            mismatch_type=stage2["mismatch_type"],
-            mismatch_detail=stage2["mismatch_detail"],
+            mismatch_type=stage1["primary_mismatch_type"],
+            mismatch_detail=stage1["mismatch_detail"],
             repair_hint=stage2["repair_hint"],
             ambiguous=False,
             should_abstain=False,
             abstain_reason=None,
             confidence=stage2["confidence"],
             raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
-            invalid_mismatch_type=stage2["invalid_mismatch_type"],
+            invalid_mismatch_type=None,
             error=None,
             stage1_answers_question=stage1["answers_question"],
             stage1_ambiguous=stage1["ambiguous"],
             stage2_ran=True,
+            **_stage1_evidence_debug(stage1),
         )
 
     except Exception as exc:
         return VerificationResult(
-            answers_question=None,
-            mismatch_type=None,
-            mismatch_detail=None,
+            answers_question=False,
+            mismatch_type=stage1["primary_mismatch_type"],
+            mismatch_detail=stage1["mismatch_detail"],
             repair_hint=None,
-            ambiguous=True,
-            should_abstain=True,
-            abstain_reason="invalid_stage2_verifier_output",
-            confidence=None,
+            ambiguous=False,
+            should_abstain=False,
+            abstain_reason=None,
+            confidence=stage1.get("confidence"),
             raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
             invalid_mismatch_type=None,
-            error=str(exc),
+            error=f"Stage 2 repair-hint generation failed: {exc}",
             stage1_answers_question=stage1["answers_question"],
             stage1_ambiguous=stage1["ambiguous"],
             stage2_ran=True,
+            **_stage1_evidence_debug(stage1),
         )
+
+
+def verify_decompiled_sql(
+    question: str,
+    execution_profile: str,
+    llm_generate_fn: Callable[[str], str],
+) -> VerificationResult:
+    """Backward-compatible alias for older runner imports."""
+    return verify_execution_profile(
+        question=question,
+        execution_profile=execution_profile,
+        llm_generate_fn=llm_generate_fn,
+    )

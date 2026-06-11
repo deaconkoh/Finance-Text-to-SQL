@@ -1,3 +1,14 @@
+"""Parse generated SQL into a compact structural representation.
+
+This module uses `sqlglot` to extract selected columns, aggregate expressions,
+tables, aliases, joins, filters, grouping, ordering, limits, parse errors, and
+unsupported-lineage markers from candidate SQL.
+
+Main input is SQL text from a baseline Text-to-SQL model. Main output is
+`ParsedSQL`, which describes SQL structure only; schema-grounded financial
+meaning is added later by `sql_semantic_mapping.py`.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
@@ -15,20 +26,45 @@ except ImportError as exc:
 
 @dataclass(frozen=True)
 class ColumnRef:
+    """Reference to a SQL column, optionally qualified by a resolved table.
+
+    Args:
+        column: Column name as parsed from the SQL expression.
+        table: Resolved table name when a qualifier or alias is available.
+
+    Assumption:
+        Table aliases have already been expanded to base table names when
+        possible.
+    """
+
     column: str
     table: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dictionary representation."""
         return asdict(self)
 
 
 @dataclass
 class AggregationRef:
+    """Aggregate expression extracted from the SELECT tree.
+
+    Args:
+        func: Normalized aggregate function name, such as `sum` or `count`.
+        expression: SQLite-rendered aggregate expression.
+        columns: Column references found inside the aggregate expression.
+
+    Edge cases:
+        `COUNT(*)` and other column-free aggregates may have an empty `columns`
+        list.
+    """
+
     func: str
     expression: str
     columns: list[ColumnRef]
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dictionary representation."""
         return {
             "func": self.func,
             "expression": self.expression,
@@ -38,6 +74,21 @@ class AggregationRef:
 
 @dataclass
 class FilterRef:
+    """WHERE-predicate reference extracted from a comparison expression.
+
+    Args:
+        columns: All columns found in the predicate, not only the leftmost one.
+        primary_column: First deduplicated column, retained for legacy callers.
+        operator: Normalized comparison operator.
+        values: Literal, function, or subquery values from the predicate.
+        expression: SQLite-rendered predicate expression.
+
+    Important:
+        All predicate columns are preserved so computed conditions such as
+        `Quantity * Rate > 10000` keep both column references for semantic
+        mapping.
+    """
+
     columns: list[ColumnRef]
     primary_column: ColumnRef | None
     operator: str | None
@@ -45,6 +96,7 @@ class FilterRef:
     expression: str
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dictionary representation."""
         return {
             "columns": [col.to_dict() for col in self.columns],
             "primary_column": self.primary_column.to_dict() if self.primary_column else None,
@@ -55,6 +107,28 @@ class FilterRef:
 
 @dataclass
 class ParsedSQL:
+    """Serializable SQL structure extracted from a candidate query.
+
+    Args:
+        selected_columns: Column references used by SELECT expressions.
+        aggregations: Aggregate function references in the query.
+        tables: Base tables found in the query.
+        aliases: Mapping from SQL aliases to base table names.
+        joins: Join targets and ON expressions.
+        filters: WHERE comparison predicates.
+        group_by: GROUP BY column references.
+        order_by: SQLite-rendered ORDER BY expressions.
+        limit: Integer LIMIT value, if statically available.
+        raw_sql: Original SQL text.
+        parse_error: Parser error string when `sqlglot` cannot parse the SQL.
+        unsupported_lineage: Whether the query uses CTEs or subqueries that v1
+            cannot trace through safely.
+
+    Assumption:
+        This object describes SQL structure only. Schema-level financial meaning
+        is added later in `sql_semantic_mapping.py`.
+    """
+
     selected_columns: list[ColumnRef]
     aggregations: list[AggregationRef]
     tables: list[str]
@@ -69,6 +143,7 @@ class ParsedSQL:
     unsupported_lineage: bool = False  # Added flag
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dictionary representation."""
         return {
             "selected_columns": [item.to_dict() for item in self.selected_columns],
             "aggregations": [item.to_dict() for item in self.aggregations],
@@ -86,10 +161,18 @@ class ParsedSQL:
 
 @dataclass
 class JoinRef:
+    """Join target and ON condition extracted from a SQL query.
+
+    Args:
+        table: Joined table name, if `sqlglot` exposes a table target.
+        on_expression: SQLite-rendered ON expression, if present.
+    """
+
     table: str | None
     on_expression: str | None
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dictionary representation."""
         return asdict(self)
 
 
@@ -355,7 +438,9 @@ def _extract_filters(tree: exp.Expression, aliases: dict[str, str]) -> list[Filt
 
     for predicate_class, operator in COMPARISON_OPERATORS.items():
         for predicate in where_expr.find_all(predicate_class):
-            # Capture ALL columns involved in this predicate (e.g., Quantity * Rate > 100)
+            # Capture every column in the predicate, not just a left-hand side.
+            # This is important for FSIR because computed filters can carry
+            # financial meaning through multiple fields.
             columns = [
                 _parse_column(column_expr, aliases) 
                 for column_expr in predicate.find_all(exp.Column)
@@ -377,6 +462,20 @@ def _extract_filters(tree: exp.Expression, aliases: dict[str, str]) -> list[Filt
     return filters
 
 def parse_sql(sql: str) -> ParsedSQL:
+    """Parse SQL text into FinVeriSQL's structural representation.
+
+    Args:
+        sql: Candidate SQL generated by a baseline model.
+
+    Returns:
+        `ParsedSQL` with extracted structural fields. If parsing fails, the
+        returned object contains empty structural lists and `parse_error`.
+
+    Edge cases:
+        CTEs and subqueries are parseable but marked as `unsupported_lineage`
+        because the current mapper cannot safely resolve derived columns back
+        to annotated base schema columns.
+    """
     raw_sql = sql or ""
 
     try:
@@ -391,6 +490,8 @@ def parse_sql(sql: str) -> ParsedSQL:
     aliases = _extract_aliases(tree)
     has_unsupported_lineage = _detect_unsupported_lineage(tree)
 
+    # Keep parsing flat facts even when lineage is unsupported; downstream FSIR
+    # construction can surface available evidence while the verifier abstains.
     return ParsedSQL(
         selected_columns=_extract_selected_columns(tree, aliases),
         aggregations=_extract_aggregations(tree, aliases),

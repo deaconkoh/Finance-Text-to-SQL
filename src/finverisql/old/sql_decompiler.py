@@ -1,3 +1,15 @@
+"""Render schema-grounded SQL semantics as a legacy text profile.
+
+This module converts `SQLFinancialSemantics` into a human-readable execution
+profile with status, data-source, measure, object-scope, temporal, filter, and
+structure sections. It remains useful for debugging and backward-compatible
+verifier flows alongside the newer JSON FSIR path.
+
+Main input is `SQLFinancialSemantics`; main output is descriptive profile text.
+The decompiler does not inspect the natural-language question or judge SQL
+correctness.
+"""
+
 from __future__ import annotations
 
 from src.finverisql.sql_semantic_mapping import SQLFinancialSemantics
@@ -86,19 +98,25 @@ def _condition_key(condition) -> tuple[str, str | None]:
 
 
 def decompile_semantics(semantics: SQLFinancialSemantics) -> str:
+    """Translate `SQLFinancialSemantics` into a structured text profile.
+
+    Args:
+        semantics: Schema-grounded semantic representation of a candidate SQL
+            query.
+
+    Returns:
+        Human-readable execution profile string. Fatal extraction states such as
+        parse errors, unsupported lineage, and ambiguous mappings are rendered
+        as explicit `[Status] ...` profiles.
+
+    Assumptions:
+        The profile describes what the candidate SQL appears to compute based
+        only on parsed SQL structure and schema annotations. It does not use the
+        natural-language question and does not judge correctness.
     """
-    Translate SQLFinancialSemantics into a structured execution profile.
 
-    This describes what the candidate SQL appears to compute based only on:
-    - parsed SQL structure
-    - schema-grounded semantic annotations
-
-    It does not use the natural language question.
-    It does not decide whether the SQL is correct.
-    It should be used as the premise for downstream semantic verification.
-    """
-
-    # Fatal guards
+    # Fatal guards: legacy verifier flows should abstain on these statuses
+    # instead of asking the LLM to infer from unsafe or incomplete semantics.
     if semantics.parse_error:
         return (
             "[Status] PARSE_ERROR\n"
