@@ -1,0 +1,17 @@
+# Group A Rejected Cases Semantic Review
+
+This reviews whether each verifier rejection is semantically justified by comparing generated SQL to the gold SQL. These are qualitative judgments, not formal SQL equivalence proofs.
+
+| Question ID | Semantic Verdict | Error Reason Verdict | Review Note |
+|---|---|---|---|
+| booksql_070828 | flag_correct_generated_wrong | partial_or_wrong_reason | Generated omits expense account_type join/filter and uses calendar YTD rather than fiscal YTD; it may match execution by chance. The direct reason about flow vs monetary is weak; hybrid/probe reason captures missing expense semantics only partially. |
+| booksql_070831 | flag_correct_generated_wrong | reason_correct | Generated COUNT(*) over rows with AR_paid=No; gold counts distinct invoice transaction_id with transaction_type=invoice and open_balance>0. Execution match can be spurious when one row per invoice happens to hold. |
+| booksql_070847 | flag_correct_generated_wrong | partial_or_wrong_reason | Generated lacks the MTD date filter and uses AR_paid=No instead of open_balance>0. Direct missing-temporal reason is correct; hybrid/probe group_by-customer reason is not necessary for a fixed customer question. |
+| booksql_070849 | flag_correct_generated_wrong | partial_or_wrong_reason | Question asks quantity sold; generated sums Credit money, misses invoice/sales receipt transaction_type, and uses a different quarter window. Probe/direct measure reason is correct; hybrid period-grouping reason is wrong. |
+| booksql_070855 | flag_correct_generated_wrong | partial_reason | Generated uses employee instead of customer, exact chart account join by businessID, SUM(Credit) instead of expense debit, and a brittle/fixed July 2022 temporal condition. Temporal mismatch is real but not the only error. |
+| booksql_070856 | flag_correct_generated_wrong | partial_or_wrong_reason | Generated COUNT(*) over rows with AR_paid=No; gold counts distinct invoice transaction_id with transaction_type=invoice and open_balance>0. Financial-measure reason is correct; hybrid/probe group_by reason is wrong. |
+| booksql_070829 | flag_correct_generated_wrong | reason_correct | Generated AVG(Quantity) averages line quantities and omits transaction_type=sales receipt. Gold sums quantity per transaction first, then averages transaction-level quantities. |
+| booksql_070838 | flag_correct_generated_wrong | wrong_reason | Generated filters Product_Service and calendar YTD; gold filters account text and fiscal YTD. The model reason about needing GROUP BY product is not supported by the gold SQL/question. |
+| booksql_070845 | flag_correct_generated_wrong | reason_correct | Same pattern as booksql_070829: generated averages line quantities and omits transaction_type=sales receipt; gold averages per-transaction summed quantities. |
+| booksql_070851 | flag_correct_generated_wrong | wrong_reason | Generated uses Product_Service, misses transaction_type=invoice, and uses a rolling one-year date expression rather than last fiscal year. The model reason about requiring GROUP BY period is not supported. |
+| booksql_070852 | flag_correct_generated_wrong | wrong_reason | Generated returns last_year_sales and current_year_sales without filtering to last year; gold returns only last-year sales by customer. The model reason about requiring grouping by period is questionable because the gold groups only by customer. |

@@ -541,7 +541,7 @@ The query may involve unsupported lineage, unresolved ambiguity, or insufficient
 Please inspect this case manually or provide additional clarification.
 ```
 
-After repairs, execute the repaired SQL and compare against gold. Store the full before/after record for every repaired query.
+`scripts/run_finverisql_repair.py` only routes repair candidates and generates repaired SQL. It does not execute repaired SQL, rerun the verifier, or decide whether a repair succeeded. Use `scripts/evaluate_finverisql_repairs.py` to execute repaired SQL, compare against gold, and compute repair success and execution-accuracy contribution.
 
 ```text
 {

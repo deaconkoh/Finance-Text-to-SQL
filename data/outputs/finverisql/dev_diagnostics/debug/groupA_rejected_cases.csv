@@ -1,0 +1,135 @@
+mode,question_id,question,generated_sql,gold_sql,mismatch_type,mismatch_detail
+direct,booksql_070830,Compare sales by customer Last fiscal year,"SELECT 
+    c.customer_name, 
+    SUM(CASE WHEN strftime('%Y', m.transaction_date) = strftime('%Y', 'now', '-1 year') THEN m.Credit ELSE 0 END) AS sales_last_year,
+    SUM(CASE WHEN strftime('%Y', m.transaction_date) = strftime('%Y', 'now') THEN m.Credit ELSE 0 END) AS sales_current_year
+FROM 
+    master_txn_table m
+JOIN 
+    customers c ON m.Customers = c.customer_name
+WHERE 
+    m.Account IN ('Income', 'Other Income')
+GROUP BY 
+    c.customer_name","select customers, sum(credit) from master_txn_table where account in ('Income','Other Income') and transaction_date BETWEEN date(current_date, '-3 months', 'start of year','-1 years', '+3 months') AND date(current_date, '-3 months', 'start of year','-1 years', '+3 months', '+1 years', '-1 days')  group by customers ",computation_logic_error,"The intent requires grouping by customer, but the profile topology has group_by: 'none'."
+direct,booksql_070831,How many Rebecca Dickson invoices are still oustanding?,"SELECT COUNT(*) 
+FROM master_txn_table 
+WHERE Customers = 'Rebecca Dickson' AND AR_paid = 'No';","select count(distinct transaction_id) from master_txn_table where customers = ""Rebecca Dickson"" and transaction_type = 'invoice' and open_balance>0",computation_logic_error,"The intent requires grouping by period, but the profile topology has group_by: 'none'."
+direct,booksql_070835,Compare sales by customer Last fiscal year,"SELECT 
+    c.customer_name, 
+    SUM(CASE WHEN strftime('%Y', m.transaction_date) = strftime('%Y', 'now', '-1 year') THEN m.Credit ELSE 0 END) AS sales_last_year,
+    SUM(CASE WHEN strftime('%Y', m.transaction_date) = strftime('%Y', 'now') THEN m.Credit ELSE 0 END) AS sales_current_year
+FROM 
+    master_txn_table m
+JOIN 
+    customers c ON m.Customers = c.customer_name
+WHERE 
+    m.Account IN ('Income', 'Other Income')
+GROUP BY 
+    c.customer_name","select customers, sum(credit) from master_txn_table where account in ('Income','Other Income') and transaction_date BETWEEN date(current_date, '-3 months', 'start of year','-1 years', '+3 months') AND date(current_date, '-3 months', 'start of year','-1 years', '+3 months', '+1 years', '-1 days')  group by customers ",computation_logic_error,"The intent requires grouping by customer, but the profile topology has group_by: 'none'."
+direct,booksql_070838,What was the first invoice value for Stationery & Printing in This fiscal year to date?,"SELECT MIN(Credit) AS First_Invoice_Value
+FROM master_txn_table
+WHERE Product_Service = 'Stationery & Printing' AND Transaction_TYPE = 'Invoice' AND Transaction_DATE BETWEEN date('now', 'start of year') AND date('now');","select min(credit) from master_txn_table where transaction_type = 'invoice' and instr(account,""Stationery & Printing"") and transaction_date BETWEEN date(current_date, '-3 months', 'start of year', '+3 months') AND date(current_date, '-3 months', 'start of year','+1 year', '+3 months', '-1 day') ",computation_logic_error,"The profile topology has 'group_by: none', but the intent requires grouping by 'product'."
+direct,booksql_070847,"As of MTD, how many invoices for Miranda Henderson remained unpaid?","SELECT COUNT(DISTINCT transaction_id) 
+FROM master_txn_table 
+WHERE Customers = 'Miranda Henderson' 
+  AND Transaction_TYPE = 'invoice' 
+  AND AR_paid = 'No';","select count(distinct transaction_id) from master_txn_table where customers = ""Miranda Henderson"" and transaction_type = 'invoice' and open_balance >0 and transaction_date BETWEEN date( current_date, ""start of month"") AND date( current_date) ",computation_logic_error,"The profile topology has group_by: 'none', but the intent requires grouping by period."
+direct,booksql_070852,Compare sales by customer Last year,"SELECT 
+    c.customer_name, 
+    SUM(CASE WHEN strftime('%Y', m.transaction_date) = strftime('%Y', 'now', '-1 year') THEN m.Credit ELSE 0 END) AS last_year_sales,
+    SUM(CASE WHEN strftime('%Y', m.transaction_date) = strftime('%Y', 'now') THEN m.Credit ELSE 0 END) AS current_year_sales
+FROM 
+    master_txn_table m
+JOIN 
+    customers c ON m.Customers = c.customer_name
+WHERE 
+    m.Account IN ('Income', 'Other Income')
+GROUP BY 
+    c.customer_name","select customers, sum(credit) from master_txn_table where account in ('Income','Other Income') and transaction_date BETWEEN date(current_date,  'start of year', '-1 days', 'start of year') AND date(current_date,  'start of year', '-1 days')  group by customers ",computation_logic_error,"The profile topology has group_by: 'customer', but the intent requires grouping by 'customer' and comparing the sales amount from the previous year's data against the current year's data (or another baseline)."
+direct,booksql_070856,How many Lisa Pena invoices are still oustanding?,"SELECT COUNT(*) 
+FROM master_txn_table 
+WHERE Customers = 'Lisa Pena' AND AR_paid = 'No';","select count(distinct transaction_id) from master_txn_table where customers = ""Lisa Pena"" and transaction_type = 'invoice' and open_balance>0",financial_measure_error,The profile measures 'row_count' but the intent requires 'count' of invoices.
+hybrid,booksql_070831,How many Rebecca Dickson invoices are still oustanding?,"SELECT COUNT(*) 
+FROM master_txn_table 
+WHERE Customers = 'Rebecca Dickson' AND AR_paid = 'No';","select count(distinct transaction_id) from master_txn_table where customers = ""Rebecca Dickson"" and transaction_type = 'invoice' and open_balance>0",computation_logic_error,"The intent requires grouping by period, but the profile topology has group_by: 'none'."
+hybrid,booksql_070838,What was the first invoice value for Stationery & Printing in This fiscal year to date?,"SELECT MIN(Credit) AS First_Invoice_Value
+FROM master_txn_table
+WHERE Product_Service = 'Stationery & Printing' AND Transaction_TYPE = 'Invoice' AND Transaction_DATE BETWEEN date('now', 'start of year') AND date('now');","select min(credit) from master_txn_table where transaction_type = 'invoice' and instr(account,""Stationery & Printing"") and transaction_date BETWEEN date(current_date, '-3 months', 'start of year', '+3 months') AND date(current_date, '-3 months', 'start of year','+1 year', '+3 months', '-1 day') ",financial_measure_error,"The intent requires a measure kind of 'monetary' or 'amount', but the profile measures 'flow' or 'unit: monetary'."
+hybrid,booksql_070844,What was the average invoice value for Manufacturing peppermint oil in Last year?,"SELECT AVG(Credit) AS average_invoice_value
+FROM master_txn_table
+WHERE Product_Service = 'Manufacturing peppermint oil'
+  AND Transaction_DATE BETWEEN date('now','-1 year') AND date('now','-1 year');","select avg(credit) from master_txn_table where transaction_type = 'invoice' and instr(account,""Manufacturing peppermint oil"") and transaction_date BETWEEN date(current_date,  'start of year', '-1 days', 'start of year') AND date(current_date,  'start of year', '-1 days') ",computation_logic_error,"The profile topology has a temporal filter, but the intent requires grouping by period."
+hybrid,booksql_070847,"As of MTD, how many invoices for Miranda Henderson remained unpaid?","SELECT COUNT(DISTINCT transaction_id) 
+FROM master_txn_table 
+WHERE Customers = 'Miranda Henderson' 
+  AND Transaction_TYPE = 'invoice' 
+  AND AR_paid = 'No';","select count(distinct transaction_id) from master_txn_table where customers = ""Miranda Henderson"" and transaction_type = 'invoice' and open_balance >0 and transaction_date BETWEEN date( current_date, ""start of month"") AND date( current_date) ",computation_logic_error,"The profile topology has 'group_by: none', but the intent requires grouping by period."
+hybrid,booksql_070849,How many Orange oil did we sell to Joshua Mercado in q3 last year?,"SELECT SUM(Credit) 
+FROM master_txn_table 
+WHERE Transaction_DATE BETWEEN date('now','-1 year','+3 months','-1 day') AND date('now','-1 year','+6 months','-1 day') 
+AND Customers = 'Joshua Mercado' 
+AND Product_Service = 'Orange oil';","select sum(quantity) from master_txn_table where customers = ""Joshua Mercado"" and product_service = 'Orange oil' and transaction_type in ('invoice', 'sales receipt') and transaction_date BETWEEN date(current_date, '-1 year', 'start of year', '+6 month') AND date(current_date, '-1 year', 'start of year', '+9 month', '-1 day') ",financial_measure_error,The profile measures 'flow' (Credit) whereas the intent requires 'quantity' (count of units sold).
+hybrid,booksql_070851,What was the total invoice value for Offering fixed income funds in Last fiscal year?,"SELECT SUM(Credit) AS Total_Invoice_Value
+FROM master_txn_table
+WHERE Product_Service = 'Offering fixed income funds'
+  AND Transaction_DATE BETWEEN date('now','-1 year','-1 day') AND date('now','-1 day');","select sum(credit) from master_txn_table where transaction_type = 'invoice' and instr(account,""Offering fixed income funds"") and transaction_date BETWEEN date(current_date, '-3 months', 'start of year','-1 years', '+3 months') AND date(current_date, '-3 months', 'start of year','-1 years', '+3 months', '+1 years', '-1 days') ",computation_logic_error,"The profile topology has a temporal filter, but the intent does not require grouping by period."
+hybrid,booksql_070852,Compare sales by customer Last year,"SELECT 
+    c.customer_name, 
+    SUM(CASE WHEN strftime('%Y', m.transaction_date) = strftime('%Y', 'now', '-1 year') THEN m.Credit ELSE 0 END) AS last_year_sales,
+    SUM(CASE WHEN strftime('%Y', m.transaction_date) = strftime('%Y', 'now') THEN m.Credit ELSE 0 END) AS current_year_sales
+FROM 
+    master_txn_table m
+JOIN 
+    customers c ON m.Customers = c.customer_name
+WHERE 
+    m.Account IN ('Income', 'Other Income')
+GROUP BY 
+    c.customer_name","select customers, sum(credit) from master_txn_table where account in ('Income','Other Income') and transaction_date BETWEEN date(current_date,  'start of year', '-1 days', 'start of year') AND date(current_date,  'start of year', '-1 days')  group by customers ",computation_logic_error,"The profile topology has group_by: 'customer', but the intent requires grouping by 'customer' and comparing 'sales' from the previous year against the current year's data."
+hybrid,booksql_070856,How many Lisa Pena invoices are still oustanding?,"SELECT COUNT(*) 
+FROM master_txn_table 
+WHERE Customers = 'Lisa Pena' AND AR_paid = 'No';","select count(distinct transaction_id) from master_txn_table where customers = ""Lisa Pena"" and transaction_type = 'invoice' and open_balance>0",financial_measure_error,The profile measures 'row_count' instead of 'count' of invoices.
+hybrid,booksql_070857,How much did Colleen Alexander spend on Accounts Receivable (A/R) in July during last year?,"SELECT SUM(Credit) 
+FROM master_txn_table 
+JOIN employees ON master_txn_table.businessID = employees.businessID 
+WHERE employees.Employee_name = 'Colleen Alexander' 
+  AND master_txn_table.Transaction_TYPE = 'A/R' 
+  AND strftime('%Y-%m', master_txn_table.Transaction_DATE) = strftime('%Y-%m', date('now', '-1 year')) || '-07';","select sum(debit) from master_txn_table  as T1 join chart_of_accounts as T2 on T1.account = T2.account_name where T1.customers = ""Colleen Alexander"" and instr(account,""Accounts Receivable (A/R)"") and strftime(""%m"", transaction_date) = '07' and strftime(""%Y"", transaction_date) = strftime('%Y', current_date) - 1 and account_type in ('Expense','Other Expense')",computation_logic_error,The profile topology has 'group_by: none' but the intent requires grouping by 'Accountant'.
+probe,booksql_070831,How many Rebecca Dickson invoices are still oustanding?,"SELECT COUNT(*) 
+FROM master_txn_table 
+WHERE Customers = 'Rebecca Dickson' AND AR_paid = 'No';","select count(distinct transaction_id) from master_txn_table where customers = ""Rebecca Dickson"" and transaction_type = 'invoice' and open_balance>0",computation_logic_error,"The intent requires grouping by period, but the profile topology has group_by: 'none'."
+probe,booksql_070838,What was the first invoice value for Stationery & Printing in This fiscal year to date?,"SELECT MIN(Credit) AS First_Invoice_Value
+FROM master_txn_table
+WHERE Product_Service = 'Stationery & Printing' AND Transaction_TYPE = 'Invoice' AND Transaction_DATE BETWEEN date('now', 'start of year') AND date('now');","select min(credit) from master_txn_table where transaction_type = 'invoice' and instr(account,""Stationery & Printing"") and transaction_date BETWEEN date(current_date, '-3 months', 'start of year', '+3 months') AND date(current_date, '-3 months', 'start of year','+1 year', '+3 months', '-1 day') ",financial_measure_error,"The intent requires a measure kind of 'monetary' or 'amount', but the profile measures 'flow' or 'unit: monetary'."
+probe,booksql_070844,What was the average invoice value for Manufacturing peppermint oil in Last year?,"SELECT AVG(Credit) AS average_invoice_value
+FROM master_txn_table
+WHERE Product_Service = 'Manufacturing peppermint oil'
+  AND Transaction_DATE BETWEEN date('now','-1 year') AND date('now','-1 year');","select avg(credit) from master_txn_table where transaction_type = 'invoice' and instr(account,""Manufacturing peppermint oil"") and transaction_date BETWEEN date(current_date,  'start of year', '-1 days', 'start of year') AND date(current_date,  'start of year', '-1 days') ",computation_logic_error,"The profile topology has a temporal filter, but the intent requires grouping by period."
+probe,booksql_070847,"As of MTD, how many invoices for Miranda Henderson remained unpaid?","SELECT COUNT(DISTINCT transaction_id) 
+FROM master_txn_table 
+WHERE Customers = 'Miranda Henderson' 
+  AND Transaction_TYPE = 'invoice' 
+  AND AR_paid = 'No';","select count(distinct transaction_id) from master_txn_table where customers = ""Miranda Henderson"" and transaction_type = 'invoice' and open_balance >0 and transaction_date BETWEEN date( current_date, ""start of month"") AND date( current_date) ",computation_logic_error,"The profile topology has 'group_by: none', but the intent requires grouping by period."
+probe,booksql_070849,How many Orange oil did we sell to Joshua Mercado in q3 last year?,"SELECT SUM(Credit) 
+FROM master_txn_table 
+WHERE Transaction_DATE BETWEEN date('now','-1 year','+3 months','-1 day') AND date('now','-1 year','+6 months','-1 day') 
+AND Customers = 'Joshua Mercado' 
+AND Product_Service = 'Orange oil';","select sum(quantity) from master_txn_table where customers = ""Joshua Mercado"" and product_service = 'Orange oil' and transaction_type in ('invoice', 'sales receipt') and transaction_date BETWEEN date(current_date, '-1 year', 'start of year', '+6 month') AND date(current_date, '-1 year', 'start of year', '+9 month', '-1 day') ",financial_measure_error,The profile measures 'flow' (Credit) whereas the intent requires 'quantity' (count of units sold).
+probe,booksql_070851,What was the total invoice value for Offering fixed income funds in Last fiscal year?,"SELECT SUM(Credit) AS Total_Invoice_Value
+FROM master_txn_table
+WHERE Product_Service = 'Offering fixed income funds'
+  AND Transaction_DATE BETWEEN date('now','-1 year','-1 day') AND date('now','-1 day');","select sum(credit) from master_txn_table where transaction_type = 'invoice' and instr(account,""Offering fixed income funds"") and transaction_date BETWEEN date(current_date, '-3 months', 'start of year','-1 years', '+3 months') AND date(current_date, '-3 months', 'start of year','-1 years', '+3 months', '+1 years', '-1 days') ",computation_logic_error,"The profile topology has a temporal filter, but the intent does not require grouping by period."
+probe,booksql_070852,Compare sales by customer Last year,"SELECT 
+    c.customer_name, 
+    SUM(CASE WHEN strftime('%Y', m.transaction_date) = strftime('%Y', 'now', '-1 year') THEN m.Credit ELSE 0 END) AS last_year_sales,
+    SUM(CASE WHEN strftime('%Y', m.transaction_date) = strftime('%Y', 'now') THEN m.Credit ELSE 0 END) AS current_year_sales
+FROM 
+    master_txn_table m
+JOIN 
+    customers c ON m.Customers = c.customer_name
+WHERE 
+    m.Account IN ('Income', 'Other Income')
+GROUP BY 
+    c.customer_name","select customers, sum(credit) from master_txn_table where account in ('Income','Other Income') and transaction_date BETWEEN date(current_date,  'start of year', '-1 days', 'start of year') AND date(current_date,  'start of year', '-1 days')  group by customers ",computation_logic_error,"The profile topology has group_by: 'customer', but the intent requires grouping by 'customer' and comparing 'sales' from the previous year against the current year's data."
+probe,booksql_070856,How many Lisa Pena invoices are still oustanding?,"SELECT COUNT(*) 
+FROM master_txn_table 
+WHERE Customers = 'Lisa Pena' AND AR_paid = 'No';","select count(distinct transaction_id) from master_txn_table where customers = ""Lisa Pena"" and transaction_type = 'invoice' and open_balance>0",financial_measure_error,The profile measures 'row_count' instead of 'count' of invoices.

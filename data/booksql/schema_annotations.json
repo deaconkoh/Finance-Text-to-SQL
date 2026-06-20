@@ -45,7 +45,29 @@
           "credit_effect": "increase"
         }
       }
-    }
+    },
+    "business_glossary": [
+      {
+        "concept": "Quantity Sold",
+        "description": "The number of individual items/units sold. Applies when asked 'how many [items]' were sold. Requires aggregating (summing) the quantity.",
+        "distinct_from": "Transaction Count (which counts the number of sales events)"
+      },
+      {
+        "concept": "Transaction Count",
+        "description": "The number of sales events or orders. Applies when asked 'how many times' an item was sold. Evaluated by counting records.",
+        "distinct_from": "Quantity Sold"
+      },
+      {
+        "concept": "Revenue / Income / Sales Amount",
+        "description": "Income-side monetary measure. Requires credit-side or income-compatible context.",
+        "distinct_from": "Generic un-signed Amount"
+      },
+      {
+        "concept": "Expense / Spend / Cost",
+        "description": "Expense-side monetary measure. Requires debit-side or expense-compatible context.",
+        "distinct_from": "Generic un-signed Amount"
+      }
+    ]
   },
   "chart_of_accounts": {
     "id": {

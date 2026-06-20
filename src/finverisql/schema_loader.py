@@ -97,6 +97,168 @@ class SchemaAnnotationStore:
 
         return cls(annotations=annotations)
 
+    def build_intent_metadata_guide(self) -> dict[str, Any]:
+        """Build compact metadata for natural-language intent decomposition.
+
+        This is for Stage 1 question interpretation only.
+        It may use question_aliases because those are natural-language aids.
+
+        It must not be used for SQL literal validation.
+        """
+
+        guide: dict[str, Any] = {
+            "table_metadata": self.metadata.get("table_metadata", {}),
+            "bookkeeping_rules": self.metadata.get("bookkeeping_rules", {}),
+            "business_glossary": self.metadata.get("business_glossary", []),
+            "entity_roles": {},
+            "measure_concepts": {},
+            "date_concepts": {},
+            "classifier_concepts": {},
+            "question_aliases": {},
+            "warnings": [],
+        }
+
+        for table, columns in self.annotations.items():
+            for column, annotation in columns.items():
+                semantic_role = annotation.get("semantic_role")
+                entity_scope = annotation.get("entity_scope")
+                measure_type = annotation.get("measure_type")
+                unit = annotation.get("unit")
+                domain_object = annotation.get("domain_object")
+
+                column_ref = f"{table}.{column}"
+
+                # Entity/object roles
+                if entity_scope:
+                    guide["entity_roles"].setdefault(entity_scope, []).append(
+                        {
+                            "column": column_ref,
+                            "semantic_role": semantic_role,
+                            "domain_object": domain_object,
+                        }
+                    )
+
+                # Measures
+                if semantic_role in {
+                    "financial_measure",
+                    "quantity_measure",
+                    "rate_measure",
+                    "transaction_group_identifier",
+                } or measure_type in {"flow", "stock", "quantity", "rate"}:
+                    guide["measure_concepts"][column_ref] = {
+                        "semantic_role": semantic_role,
+                        "measure_type": measure_type,
+                        "unit": unit,
+                        "domain_object": domain_object,
+                        "financial_element": annotation.get("financial_element"),
+                        "sign_convention": annotation.get("sign_convention"),
+                        "posting_side": annotation.get("posting_side"),
+                        "time_behavior": annotation.get("time_behavior"),
+                        "requires_account_context": annotation.get("requires_account_context"),
+                        "warning": annotation.get("warning"),
+                    }
+
+                # Dates
+                if measure_type == "date" or semantic_role in {
+                    "transaction_date",
+                    "system_created_date",
+                    "due_date",
+                    "entity_date",
+                }:
+                    guide["date_concepts"][column_ref] = {
+                        "semantic_role": semantic_role,
+                        "time_behavior": annotation.get("time_behavior"),
+                        "use_for": annotation.get("use_for", []),
+                        "not_for": annotation.get("not_for", []),
+                    }
+
+                # Classifiers and NL aliases
+                if semantic_role and "classifier" in semantic_role:
+                    guide["classifier_concepts"][column_ref] = {
+                        "semantic_role": semantic_role,
+                        "entity_scope": entity_scope,
+                        "value_concepts": annotation.get("value_concepts", {}),
+                        "concept_metadata": annotation.get("concept_metadata", {}),
+                    }
+
+                question_aliases = annotation.get("question_aliases")
+                if isinstance(question_aliases, dict) and question_aliases:
+                    guide["question_aliases"][column_ref] = question_aliases
+
+                warning = annotation.get("warning")
+                if warning:
+                    guide["warnings"].append(
+                        {
+                            "column": column_ref,
+                            "warning": warning,
+                        }
+                    )
+
+        return guide
+    
+    def render_intent_metadata_guide(self, guide: dict[str, Any]) -> str:
+        """Render compact metadata guide for Stage 1 prompts."""
+
+        lines: list[str] = []
+
+        lines.append("FINANCIAL INTENT METADATA GUIDE")
+        lines.append("")
+        lines.append("Business Glossary:")
+
+        for term in guide.get("business_glossary", []):
+            lines.append(f"- Concept: {term.get('concept')}")
+            lines.append(f"  Description: {term.get('description')}")
+            if term.get("distinct_from"):
+                lines.append(f"  Distinct from: {term.get('distinct_from')}")
+
+        lines.append("")
+        lines.append("Available entity roles:")
+        for role, cols in sorted(guide.get("entity_roles", {}).items()):
+            col_refs = sorted({item["column"] for item in cols})
+            lines.append(f"- {role}: {', '.join(col_refs)}")
+
+        lines.append("")
+        lines.append("Measure concepts:")
+        for column_ref, meta in sorted(guide.get("measure_concepts", {}).items()):
+            parts = [
+                f"role={meta.get('semantic_role')}",
+                f"type={meta.get('measure_type')}",
+                f"unit={meta.get('unit')}",
+            ]
+
+            if meta.get("posting_side"):
+                parts.append(f"posting_side={meta.get('posting_side')}")
+            if meta.get("sign_convention"):
+                parts.append(f"sign={meta.get('sign_convention')}")
+            if meta.get("requires_account_context"):
+                parts.append("requires_account_context=true")
+            if meta.get("warning"):
+                parts.append(f"warning={meta.get('warning')}")
+
+            lines.append(f"- {column_ref}: " + "; ".join(str(p) for p in parts if p))
+
+        lines.append("")
+        lines.append("Date concepts:")
+        for column_ref, meta in sorted(guide.get("date_concepts", {}).items()):
+            lines.append(
+                f"- {column_ref}: role={meta.get('semantic_role')}; "
+                f"time_behavior={meta.get('time_behavior')}; "
+                f"use_for={meta.get('use_for')}; not_for={meta.get('not_for')}"
+            )
+
+        lines.append("")
+        lines.append("Natural-language aliases:")
+        for column_ref, aliases in sorted(guide.get("question_aliases", {}).items()):
+            alias_pairs = [f"{k} -> {v}" for k, v in aliases.items()]
+            lines.append(f"- {column_ref}: " + "; ".join(alias_pairs))
+
+        lines.append("")
+        lines.append("General warnings:")
+        for warning in guide.get("warnings", []):
+            lines.append(f"- {warning.get('column')}: {warning.get('warning')}")
+
+        return "\n".join(lines)
+    
     # Metadata accessors
     def get_schema_metadata(self) -> dict[str, Any]:
         """Return the top-level schema metadata block."""

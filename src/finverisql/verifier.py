@@ -1,15 +1,16 @@
-"""Two-stage finance-aware semantic verifier for FinVeriSQL.
+"""Multi-stage finance-aware semantic verifier for FinVeriSQL.
 
 This module receives:
 - a natural-language financial question
+- a decomposed user intent representation (Stage 1)
 - a verifier-facing execution profile describing what the generated SQL computes
 - an LLM generation function
 
 Verifier design:
-- Stage 1 performs accept / reject / abstain verification.
-- Stage 1 also classifies the primary semantic mismatch when the SQL is rejected.
-- Stage 2 runs only after a Stage 1 rejection and generates a repair hint.
-- Stage 2 does not reclassify and does not generate corrected SQL.
+- Stage 2 performs accept / reject / abstain verification (direct comparison and optional probing).
+- Stage 2 also classifies the primary semantic mismatch when the SQL is rejected.
+- Stage 3 runs only after a Stage 2 rejection and generates a repair hint.
+- Stage 3 does not reclassify and does not generate corrected SQL.
 
 Mismatch taxonomy:
 - financial_object_error
@@ -94,15 +95,19 @@ class VerificationResult:
     invalid_mismatch_type: str | None = None
     error: str | None = None
 
-    # Stage 1 debug fields.
-    stage1_answers_question: bool | None = None
-    stage1_ambiguous: bool | None = None
-    stage2_ran: bool = False
-    stage1_evidence_match: str | None = None
-    stage1_primary_mismatch_type: str | None = None
-    stage1_mismatch_detail: str | None = None
-    stage1_failed_evidence: list[str] | None = None
-    stage1_diagnostic_dimensions: dict[str, str] | None = None
+    # Stage 2 debug fields.
+    stage2_answers_question: bool | None = None
+    stage2_ambiguous: bool | None = None
+    stage3_ran: bool = False
+    stage2_evidence_match: str | None = None
+    stage2_primary_mismatch_type: str | None = None
+    stage2_mismatch_detail: str | None = None
+    stage2_failed_evidence: list[str] | None = None
+    stage2_diagnostic_dimensions: dict[str, str] | None = None
+    
+    # Probing tracking
+    probes_used: int = 0
+    probe_trajectory: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return the result as a plain JSON-serialisable dictionary."""
@@ -144,32 +149,29 @@ def detect_profile_status(execution_profile: str) -> str | None:
     return None
 
 
-def build_stage1_verdict_prompt(question: str, execution_profile: str) -> str:
+def build_stage2_verification_prompt(
+    intent_representation: dict[str, Any], 
+    execution_profile: str,
+    include_probe: bool = True,
+) -> str:
+    intent_json = json.dumps(intent_representation, ensure_ascii=False, indent=2)
+    
+    probe_field = '  "suggested_probe": "<If ambiguous, write a single specific question to query the semantic profile (e.g., \'Does column master_txn_table.Amount represent a monetary value?\'). DO NOT ask questions already asked in the probe_context> | null",\n' if include_probe else ""
+    probe_rule = '- If evidence is missing or ambiguous, return evidence_match="unclear", ambiguous=true, and provide a `suggested_probe`.' if include_probe else '- If evidence is missing or ambiguous, return evidence_match="unclear" and ambiguous=true.'
+    
     return f"""
 You are a finance-aware SQL semantic equivalence verifier.
 
-Your task is to compare the user's financial question against the compact semantic profile of the generated SQL.
+Your task is to compare the required semantic checks in the Decomposed Intent against the evidence in the Compact Semantic Profile.
 
 The compact semantic profile describes what the generated SQL computes.
 It is not gold SQL.
 It is not the expected answer.
 
-You must compare meaning across three dimensions:
-
-D1 Financial Object:
-What business/financial object is being measured?
-Examples: customer, vendor, product/service, invoice, bill, payment, revenue, expense, asset, liability, unpaid status.
-
-D2 Financial Measure:
-How is it measured?
-Examples: SUM(Quantity), COUNT(Transaction_ID), COUNT(*), SUM(Debit), SUM(Credit), SUM(Amount), AVG(Credit).
-
-D3 Computation Logic:
-Over what scope, period, grouping, ranking, or granularity?
-Examples: by customer, by vendor, monthly, year_to_date, trailing_12_months, top 1, latest, distinct transaction count.
-
-Your job is NOT just to check whether evidence exists.
-Your job is to decide whether the compact profile has the same financial meaning as the user question.
+You must evaluate alignment across three dimensions:
+D1 Financial Object: Does the `scope` and object evidence align with the intended entity/object?
+D2 Financial Measure: Does the `measurement` align with the intended measure kind and aggregation?
+D3 Computation Logic: Does the `topology` align with intended grouping, ordering, limit, and temporal filters?
 
 Return ONLY this JSON object:
 {{
@@ -178,64 +180,223 @@ Return ONLY this JSON object:
     "financial_measure": "same | different | unclear",
     "computation_logic": "same | different | unclear"
   }},
-  
   "evidence_match": "sufficient | insufficient | unclear",
   "answers_question": true | false | null,
   "ambiguous": true | false,
   "primary_mismatch_type": "financial_object_error | financial_measure_error | computation_logic_error | null",
-  "mismatch_detail": "",
-  "failed_evidence": [],
+  "mismatch_detail": "<explain the mismatch or ambiguity>",
+{probe_field}
+  "failed_evidence": ["<list of string evidence>"],
   "confidence": "high | medium | low"
 }}
 
 Decision rules:
-- If all answer-changing dimensions are "same", return evidence_match="sufficient" and answers_question=true.
-- If any answer-changing dimension is "different", return evidence_match="insufficient" and answers_question=false.
-- If a required dimension cannot be determined from the compact profile, return evidence_match="unclear" unless the missing evidence clearly changes the answer.
-- Do not reject because of a missing secondary boundary if the question meaning and profile meaning are still equivalent.
-- Do not accept based on partial overlap if the measure or computation means something different.
+- If all dimensions are "same", return evidence_match="sufficient" and answers_question=true.
+- If any dimension is "different", return evidence_match="insufficient" and answers_question=false.
+- Do not reject based on strict terminology differences. Focus on actual financial equivalence.
+- EQUIVALENCE RULE: An intent `measure_kind: "monetary"` or `"amount"` is satisfied by a profile `measure_type: "flow"` or `unit: "monetary"`.
+- EQUIVALENCE RULE: An intent `measure_kind: "count"` is satisfied by a profile `semantic_operation: "row_count"` or `"distinct_transaction_count"`.
+- STRICT RULE: An intent requiring `measure_kind: "quantity"` (summing units sold) is DIFFERENT from a profile measuring `row_count` or `distinct_transaction_count`. Do not conflate them.
+- STRICT RULE: If the intent requires grouping (e.g., `requires_group_by_period: true` or `group_by` is not empty) but the profile topology has `group_by: "none"`, then `computation_logic` is "different".
+- EQUIVALENCE RULE: An intent requiring `MAX` or `MIN` aggregation is satisfied by a profile using `ORDER BY ... DESC LIMIT 1` or `ASC LIMIT 1`.
+{probe_rule}
 
-Important BookSQL meaning rules:
-- "How many [product/service] did we sell?" means quantity sold. It requires Quantity or quantity-compatible measurement.
-- COUNT(*), COUNT(Transaction_ID), or COUNT(DISTINCT Transaction_ID) means number of rows/transactions, not quantity sold.
-- "How many times did we sell [product/service]?" means transaction/event count. COUNT(DISTINCT Transaction_ID) can be equivalent.
-- "Number of invoices/bills/payments" means count of those transaction objects. It should not be treated as quantity sold.
-- "Spend", "cost", or "expense" usually requires Debit or expense-compatible monetary measurement.
-- "Revenue" or "sales amount" usually requires Credit or revenue-compatible monetary measurement.
-- "Amount" is not automatically equivalent to Debit or Credit when financial direction matters.
-- "Monthly" or "by month" means month-level grouping. A current-month date filter alone is not monthly grouping.
-- "This fiscal year" is not automatically equivalent to trailing_1_year.
-- "Year to date", "month to date", and "week to date" should match the period_hint when available.
+Decomposed Intent:
+{intent_json}
 
-Primary mismatch selection:
-- If the object/entity/event/status is different, use financial_object_error.
-- If the measure has a different meaning, use financial_measure_error.
-- If object and measure are mostly correct but period/grouping/ranking/granularity is different, use computation_logic_error.
-- If multiple dimensions differ, choose the one that most directly changes the answer.
-
-Actual case:
-
-User question:
-{question}
-
-Compact semantic profile:
+Compact Semantic Profile:
 {execution_profile}
 
 Return only the JSON object.
 """.strip()
 
 
-def build_stage2_repair_prompt(
-    question: str,
+def build_stage2_semantic_verification_prompt(
+    intent_representation: dict[str, Any],
     execution_profile: str,
-    stage1_verdict: dict[str, Any],
+    include_probe: bool = True,
 ) -> str:
-    """Build the Stage 2 repair-hint prompt.
+    intent_json = json.dumps(intent_representation, ensure_ascii=False, indent=2)
 
-    Stage 2 only writes repair guidance based on Stage 1. It must not reclassify.
+    probe_field = '  "suggested_probe": "<If ambiguous, write a single specific question to query the full semantic profile (e.g., \'Does measure_usage show a quantity measure or transaction count?\'). DO NOT ask questions already asked in the probe_context> | null",\n' if include_probe else ""
+    probe_rule = '- If evidence is missing or ambiguous, return evidence_match="unclear", ambiguous=true, and provide a `suggested_probe`.' if include_probe else '- If evidence is missing or ambiguous, return evidence_match="unclear" and ambiguous=true.'
+
+    return f"""
+You are a finance-aware SQL semantic equivalence verifier.
+
+Your task is to compare the required semantic checks in the Decomposed Intent against the evidence in the Full Semantic Profile.
+
+The full semantic profile describes what the generated SQL computes.
+It is not gold SQL.
+It is not the expected answer.
+
+You must evaluate alignment across three dimensions:
+D1 Financial Object: Does `object_scope` align with the intended entity/object, transaction type, account type, customer/vendor, product/service, or status constraints?
+D2 Financial Measure: Does `measure_usage` align with the intended measure kind and aggregation?
+D3 Computation Logic: Does `logic` align with intended grouping, ordering, limit, and temporal filters?
+
+Use these full semantic profile fields:
+- `object_scope.has_transaction_type_filter`, `transaction_type_values`, `has_account_type_filter`, `account_type_values`, and `scope_constraints` for financial object/scope evidence.
+- `measure_usage.aggregated_columns`, `selected_columns`, `aggregation_functions`, `measure_types`, `units`, and `financial_roles` for measure evidence.
+- `logic.filter_conditions`, `date_conditions`, `group_by_columns`, `order_by_expressions`, and `limit` for computation logic evidence.
+- `table_context` for table grain and transaction grouping context.
+- `warnings` for profile extraction caveats.
+
+Return ONLY this JSON object:
+{{
+  "dimension_alignment": {{
+    "financial_object": "same | different | unclear",
+    "financial_measure": "same | different | unclear",
+    "computation_logic": "same | different | unclear"
+  }},
+  "evidence_match": "sufficient | insufficient | unclear",
+  "answers_question": true | false | null,
+  "ambiguous": true | false,
+  "primary_mismatch_type": "financial_object_error | financial_measure_error | computation_logic_error | null",
+  "mismatch_detail": "<explain the mismatch or ambiguity>",
+{probe_field}
+  "failed_evidence": ["<list of string evidence>"],
+  "confidence": "high | medium | low"
+}}
+
+Decision rules:
+- If all dimensions are "same", return evidence_match="sufficient" and answers_question=true.
+- If any dimension is "different", return evidence_match="insufficient" and answers_question=false.
+- Do not reject based on strict terminology differences. Focus on actual financial equivalence.
+- EQUIVALENCE RULE: An intent `measure_kind: "monetary"` or `"amount"` is satisfied by a profile `measure_type: "flow"` or `unit: "monetary"`.
+- EQUIVALENCE RULE: An intent `measure_kind: "count"` is satisfied by a profile `semantic_operation: "row_count"` or `"distinct_transaction_count"`.
+- STRICT RULE: An intent requiring `measure_kind: "quantity"` (summing units sold) is DIFFERENT from a profile measuring `row_count` or `distinct_transaction_count`. Do not conflate them.
+- STRICT RULE: If the intent requires grouping (e.g., `requires_group_by_period: true` or `group_by` is not empty) but `logic.group_by_columns` is empty, then `computation_logic` is "different".
+- EQUIVALENCE RULE: An intent requiring `MAX` or `MIN` aggregation is satisfied by a profile using `ORDER BY ... DESC LIMIT 1` or `ASC LIMIT 1`.
+- Missing required filters are mismatches, not matches. For example, if the intent requires a payment/invoice/sale event but `object_scope.has_transaction_type_filter` is false, treat financial object or computation logic as different unless the profile has equivalent evidence elsewhere.
+- If the intent requires a broad period such as last fiscal year, last month, or MTD, but `logic.date_conditions` show a single-day or incompatible date range, treat computation logic as different.
+{probe_rule}
+
+Decomposed Intent:
+{intent_json}
+
+Full Semantic Profile:
+{execution_profile}
+
+Return only the JSON object.
+""".strip()
+
+
+def build_stage2_prompt_for_profile(
+    profile_mode: str,
+    intent_representation: dict[str, Any],
+    execution_profile: str,
+    include_probe: bool = True,
+) -> str:
+    if profile_mode == "semantic":
+        return build_stage2_semantic_verification_prompt(
+            intent_representation=intent_representation,
+            execution_profile=execution_profile,
+            include_probe=include_probe,
+        )
+
+    return build_stage2_verification_prompt(
+        intent_representation=intent_representation,
+        execution_profile=execution_profile,
+        include_probe=include_probe,
+    )
+
+
+def build_stage2_probe_prompt(
+    probe_question: str, 
+    intent_representation: dict[str, Any],
+    execution_profile: str
+) -> str:
+    intent_json = json.dumps(intent_representation, ensure_ascii=False, indent=2)
+    return f"""
+You are a finance-aware SQL semantic expert.
+
+Your task is to answer a specific question about the meaning of the generated SQL to resolve an ambiguity.
+
+Decomposed Intent:
+{intent_json}
+
+Compact semantic profile:
+{execution_profile}
+
+Question to resolve:
+{probe_question}
+
+Evaluate the profile carefully and answer the question.
+Return ONLY this JSON object:
+{{
+  "reasoning": "<write your step-by-step logic here, focusing only on the specific question>",
+  "probe_resolution": "matches_intent | contradicts_intent | unclear"
+}}
+
+Return only the JSON object.
+""".strip()
+
+
+def build_stage2_semantic_probe_prompt(
+    probe_question: str,
+    intent_representation: dict[str, Any],
+    execution_profile: str
+) -> str:
+    intent_json = json.dumps(intent_representation, ensure_ascii=False, indent=2)
+    return f"""
+You are a finance-aware SQL semantic expert.
+
+Your task is to answer a specific question about the meaning of the generated SQL to resolve an ambiguity.
+
+Decomposed Intent:
+{intent_json}
+
+Full semantic profile:
+{execution_profile}
+
+Question to resolve:
+{probe_question}
+
+Evaluate the full semantic profile carefully. Use `object_scope`, `measure_usage`, `logic`, `table_context`, and `warnings` as evidence.
+Return ONLY this JSON object:
+{{
+  "reasoning": "<write your step-by-step logic here, focusing only on the specific question>",
+  "probe_resolution": "matches_intent | contradicts_intent | unclear"
+}}
+
+Return only the JSON object.
+""".strip()
+
+
+def build_stage2_probe_prompt_for_profile(
+    profile_mode: str,
+    probe_question: str,
+    intent_representation: dict[str, Any],
+    execution_profile: str,
+) -> str:
+    if profile_mode == "semantic":
+        return build_stage2_semantic_probe_prompt(
+            probe_question=probe_question,
+            intent_representation=intent_representation,
+            execution_profile=execution_profile,
+        )
+
+    return build_stage2_probe_prompt(
+        probe_question=probe_question,
+        intent_representation=intent_representation,
+        execution_profile=execution_profile,
+    )
+
+
+def build_stage3_repair_prompt(
+    question: str,
+    intent_representation: dict[str, Any],
+    execution_profile: str,
+    stage2_verdict: dict[str, Any],
+) -> str:
+    """Build the Stage 3 repair-hint prompt.
+
+    Stage 3 only writes repair guidance based on Stage 2. It must not reclassify.
     """
-    stage1_verdict_json = json.dumps(
-        stage1_verdict,
+    intent_json = json.dumps(intent_representation, ensure_ascii=False, indent=2)
+    stage2_verdict_json = json.dumps(
+        stage2_verdict,
         ensure_ascii=False,
         sort_keys=True,
     )
@@ -243,13 +404,13 @@ def build_stage2_repair_prompt(
     return f"""
 You are a finance-aware SQL repair planner.
 
-Stage 1 already decided that the candidate SQL does NOT answer the question and already classified the primary mismatch type.
+Stage 2 already decided that the candidate SQL does NOT answer the question and classified the primary mismatch type.
 
 Your task:
 - Generate a concise repair hint for a later SQL repair step.
-- Base the hint on Stage 1 primary_mismatch_type, mismatch_detail, and failed_evidence.
+- Base the hint on Stage 2 primary_mismatch_type, mismatch_detail, and failed_evidence.
 - Do not reclassify the mismatch type.
-- Do not change the Stage 1 verdict.
+- Do not change the Stage 2 verdict.
 - Do not generate corrected SQL.
 
 Return only valid JSON with exactly these fields:
@@ -258,48 +419,34 @@ Return only valid JSON with exactly these fields:
   "confidence": "high | medium | low"
 }}
 
-Examples:
-
-Input primary_mismatch_type: financial_object_error
-Input failed_evidence: ["missing invoice transaction scope", "missing reliable unpaid payment-status evidence"]
-Output:
-{{"repair_hint": "Add or repair the missing business-object filters, such as invoice transaction scope and reliable unpaid/open-balance evidence, while preserving the customer scope.", "confidence": "high"}}
-
-Input primary_mismatch_type: financial_measure_error
-Input failed_evidence: ["missing quantity measure", "row_count is not equivalent to quantity sold"]
-Output:
-{{"repair_hint": "Use the quantity field or quantity-compatible expression for the sold-item measure instead of counting rows, while preserving the product/service scope.", "confidence": "high"}}
-
-Input primary_mismatch_type: computation_logic_error
-Input failed_evidence: ["missing temporal_period grouping for monthly breakdown"]
-Output:
-{{"repair_hint": "Add the required month-level grouping while preserving the vendor scope and spend-compatible measure.", "confidence": "high"}}
-
-Actual case:
-
 User question:
 {question}
+
+Decomposed Intent:
+{intent_json}
 
 Execution profile:
 {execution_profile}
 
-Stage 1 verdict:
-{stage1_verdict_json}
+Stage 2 verdict:
+{stage2_verdict_json}
 
 Return only the JSON object.
 """.strip()
 
 
-def build_stage2_classification_prompt(
+def build_stage3_classification_prompt(
     question: str,
+    intent_representation: dict[str, Any],
     execution_profile: str,
-    stage1_verdict: dict[str, Any],
+    stage2_verdict: dict[str, Any],
 ) -> str:
-    """Backward-compatible alias for the old Stage 2 function name."""
-    return build_stage2_repair_prompt(
+    """Backward-compatible alias for the old classification prompt name."""
+    return build_stage3_repair_prompt(
         question=question,
+        intent_representation=intent_representation,
         execution_profile=execution_profile,
-        stage1_verdict=stage1_verdict,
+        stage2_verdict=stage2_verdict,
     )
 
 
@@ -432,25 +579,25 @@ def _normalise_mismatch_type(value: Any) -> tuple[str | None, str | None]:
 
 
 def _pack_raw_outputs(
-    stage1_raw_output: str | None,
     stage2_raw_output: str | None = None,
+    stage3_raw_output: str | None = None,
 ) -> str:
     return json.dumps(
         {
-            "stage1_raw_output": stage1_raw_output,
             "stage2_raw_output": stage2_raw_output,
+            "stage3_raw_output": stage3_raw_output,
         },
         ensure_ascii=False,
     )
 
 
-def _stage1_evidence_debug(stage1: dict[str, Any]) -> dict[str, Any]:
+def _stage2_evidence_debug(stage2: dict[str, Any]) -> dict[str, Any]:
     return {
-        "stage1_evidence_match": stage1.get("evidence_match"),
-        "stage1_primary_mismatch_type": stage1.get("primary_mismatch_type"),
-        "stage1_mismatch_detail": stage1.get("mismatch_detail"),
-        "stage1_failed_evidence": stage1.get("failed_evidence"),
-        "stage1_diagnostic_dimensions": stage1.get("diagnostic_dimensions"),
+        "stage2_evidence_match": stage2.get("evidence_match"),
+        "stage2_primary_mismatch_type": stage2.get("primary_mismatch_type"),
+        "stage2_mismatch_detail": stage2.get("mismatch_detail"),
+        "stage2_failed_evidence": stage2.get("failed_evidence"),
+        "stage2_diagnostic_dimensions": stage2.get("diagnostic_dimensions"),
     }
 
 
@@ -514,81 +661,57 @@ def _normalise_failed_evidence(value: Any) -> list[str]:
     return [text] if text else []
 
 
-def normalise_stage1_output(parsed: dict[str, Any]) -> dict[str, Any]:
-    """Normalize and enforce consistency for Stage 1 verifier output.
+def normalise_stage2_verification_output(parsed: dict[str, Any]) -> dict[str, Any]:
+    """Normalize and enforce consistency for Stage 2 verifier output.
 
     `evidence_match` is treated as the source of truth.
     Diagnostic dimensions are preserved for debugging and are not hard gates.
     """
     evidence_match = _normalise_evidence_match(parsed.get("evidence_match"))
-
     primary_mismatch_type, invalid_mismatch_type = _normalise_mismatch_type(
         parsed.get("primary_mismatch_type")
     )
-
     mismatch_detail = normalise_optional_str(parsed.get("mismatch_detail"))
+    suggested_probe = normalise_optional_str(parsed.get("suggested_probe"))
     failed_evidence = _normalise_failed_evidence(parsed.get("failed_evidence"))
     diagnostic_dimensions = _normalise_diagnostic_dimensions(
         parsed.get("diagnostic_dimensions")
     )
     confidence = _normalise_confidence(parsed.get("confidence")) or "medium"
 
-    if evidence_match == "sufficient":
-        return {
-            "evidence_match": "sufficient",
-            "answers_question": True,
-            "ambiguous": False,
-            "primary_mismatch_type": None,
-            "mismatch_detail": None,
-            "failed_evidence": [],
-            "diagnostic_dimensions": diagnostic_dimensions,
-            "confidence": confidence,
-            "invalid_mismatch_type": None,
-        }
+    is_ambiguous = normalise_bool(parsed.get("ambiguous"))
+    if is_ambiguous is None:
+        is_ambiguous = False
 
-    if evidence_match == "insufficient" and primary_mismatch_type is not None:
-        return {
-            "evidence_match": "insufficient",
-            "answers_question": False,
-            "ambiguous": False,
-            "primary_mismatch_type": primary_mismatch_type,
-            "mismatch_detail": mismatch_detail,
-            "failed_evidence": failed_evidence,
-            "diagnostic_dimensions": diagnostic_dimensions,
-            "confidence": confidence,
-            "invalid_mismatch_type": invalid_mismatch_type,
-        }
-
-    if evidence_match == "insufficient":
-        return {
-            "evidence_match": "insufficient",
-            "answers_question": None,
-            "ambiguous": True,
-            "primary_mismatch_type": None,
-            "mismatch_detail": mismatch_detail,
-            "failed_evidence": failed_evidence,
-            "diagnostic_dimensions": diagnostic_dimensions,
-            "confidence": confidence,
-            "invalid_mismatch_type": invalid_mismatch_type,
-        }
-
-    return {
-        "evidence_match": "unclear",
+    base_dict = {
+        "evidence_match": evidence_match,
         "answers_question": None,
-        "ambiguous": True,
+        "ambiguous": is_ambiguous,
         "primary_mismatch_type": None,
         "mismatch_detail": mismatch_detail,
+        "suggested_probe": suggested_probe,
         "failed_evidence": failed_evidence,
         "diagnostic_dimensions": diagnostic_dimensions,
         "confidence": confidence,
         "invalid_mismatch_type": invalid_mismatch_type,
     }
 
+    if evidence_match == "sufficient":
+        base_dict.update({"answers_question": True, "invalid_mismatch_type": None})
+    elif evidence_match == "insufficient" and primary_mismatch_type is not None:
+        base_dict.update({"answers_question": False, "primary_mismatch_type": primary_mismatch_type})
+    elif evidence_match == "insufficient":
+        base_dict.update({"ambiguous": True})
+    else:
+        base_dict.update({"evidence_match": "unclear", "ambiguous": True})
 
-def normalise_stage2_output(parsed: dict[str, Any]) -> dict[str, Any]:
-    """Normalize Stage 2 repair-hint output.
+    return base_dict
 
-    Stage 2 is not allowed to reclassify. Any mismatch fields returned by the
+
+def normalise_stage3_repair_output(parsed: dict[str, Any]) -> dict[str, Any]:
+    """Normalize Stage 3 repair-hint output.
+
+    Stage 3 is not allowed to reclassify. Any mismatch fields returned by the
     model are ignored by the orchestrator.
     """
     repair_hint = normalise_optional_str(parsed.get("repair_hint"))
@@ -600,181 +723,213 @@ def normalise_stage2_output(parsed: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+class SemanticVerifier:
+    def __init__(
+        self,
+        llm_generate_fn: Callable[[str], str],
+        probing_mode: str = "hybrid",
+        max_probes: int = 7,
+        profile_mode: str = "compact",
+    ):
+        self.llm_generate_fn = llm_generate_fn
+        self.probing_mode = probing_mode
+        self.max_probes = max_probes
+        self.profile_mode = profile_mode
+
+    def verify(self, question: str, intent: dict[str, Any], execution_profile: str) -> VerificationResult:
+        """Run the multi-stage semantic verifier over an execution profile."""
+        status = detect_profile_status(execution_profile)
+
+        if status in ABSTAIN_STATUSES:
+            return VerificationResult(
+                answers_question=None, mismatch_type=None, mismatch_detail=None, repair_hint=None,
+                ambiguous=True, should_abstain=True, abstain_reason=status, confidence=None,
+                raw_output=None, invalid_mismatch_type=None, error=None, probes_used=0,
+                probe_trajectory=[], stage2_answers_question=None, stage2_ambiguous=None, stage3_ran=False
+            )
+
+        probes_used = 0
+        probe_trajectory = []
+        raw_outputs = []
+        current_intent = dict(intent)
+        stage2_verification = None
+
+        try:
+            while probes_used <= self.max_probes:
+                stage2_prompt = build_stage2_prompt_for_profile(
+                    profile_mode=self.profile_mode,
+                    intent_representation=current_intent,
+                    execution_profile=execution_profile,
+                    include_probe=(self.probing_mode != "none"),
+                )
+
+                raw_stage2 = self.llm_generate_fn(stage2_prompt)
+                raw_outputs.append({"step": f"stage2_{probes_used}", "raw": raw_stage2})
+                
+                stage2_parsed = parse_verifier_json(raw_stage2)
+                stage2_verification = normalise_stage2_verification_output(stage2_parsed)
+
+                # --- Probing loop control logic ---
+                if self.probing_mode == "none":
+                    # 'none' mode (direct comparison) never probes.
+                    break
+                    
+                if self.probing_mode == "hybrid":
+                    # 'hybrid' mode is adaptive. It only probes if the initial
+                    # verification is ambiguous or unclear. If confident, stop.
+                    if not stage2_verification["ambiguous"] and stage2_verification["evidence_match"] != "unclear":
+                        break
+                
+                # 'probe' mode is eager. It does not check for ambiguity and will
+                # proceed to the next check, continuing to probe as long as the
+                # LLM can suggest a question.
+
+                suggested_probe = stage2_verification.get("suggested_probe")
+                if not suggested_probe or probes_used >= self.max_probes:
+                    # For all probing modes, stop if there's no more questions to ask or the limit is reached.
+                    break
+                    
+                probes_used += 1
+                probe_prompt = build_stage2_probe_prompt_for_profile(
+                    profile_mode=self.profile_mode,
+                    probe_question=suggested_probe,
+                    intent_representation=current_intent,
+                    execution_profile=execution_profile,
+                )
+                raw_probe = self.llm_generate_fn(probe_prompt)
+                raw_outputs.append({"step": f"probe_{probes_used}", "raw": raw_probe})
+                
+                probe_parsed = parse_verifier_json(raw_probe)
+                probe_resolution = probe_parsed.get("probe_resolution", "unclear")
+                
+                probe_trajectory.append({
+                    "probe_question": suggested_probe,
+                    "resolution": probe_resolution,
+                    "reasoning": probe_parsed.get("reasoning", "")
+                })
+                
+                if "probe_context" not in current_intent:
+                    current_intent["probe_context"] = []
+                    
+                current_intent["probe_context"].append({
+                    "question": suggested_probe,
+                    "answer": probe_parsed.get("reasoning", ""),
+                    "resolution": probe_resolution
+                })
+
+        except MaxTokensReachedError:
+            return VerificationResult(
+                answers_question=None, mismatch_type=None, mismatch_detail=None, repair_hint=None,
+                ambiguous=True, should_abstain=True, abstain_reason="max_tokens_reached", confidence=None,
+                raw_output=json.dumps(raw_outputs, ensure_ascii=False), invalid_mismatch_type=None,
+                error="LLM generation was truncated due to max token limit.", probes_used=probes_used,
+                probe_trajectory=probe_trajectory, stage2_answers_question=None, stage2_ambiguous=None, stage3_ran=False,
+            )
+
+        except Exception as exc:
+            return VerificationResult(
+                answers_question=None, mismatch_type=None, mismatch_detail=None, repair_hint=None,
+                ambiguous=True, should_abstain=True, abstain_reason="invalid_verifier_output", confidence=None,
+                raw_output=json.dumps(raw_outputs, ensure_ascii=False), invalid_mismatch_type=None,
+                error=str(exc), probes_used=probes_used, probe_trajectory=probe_trajectory,
+                stage2_answers_question=None, stage2_ambiguous=None, stage3_ran=False,
+            )
+
+        if stage2_verification["answers_question"] is True:
+            return VerificationResult(
+                answers_question=True, mismatch_type=None, mismatch_detail=None, repair_hint=None,
+                ambiguous=False, should_abstain=False, abstain_reason=None, confidence=stage2_verification.get("confidence"),
+                raw_output=json.dumps(raw_outputs, ensure_ascii=False), invalid_mismatch_type=None, error=None,
+                probes_used=probes_used, probe_trajectory=probe_trajectory, stage2_answers_question=True,
+                stage2_ambiguous=False, stage3_ran=False, **_stage2_evidence_debug(stage2_verification),
+            )
+
+        if stage2_verification["answers_question"] is None or stage2_verification["ambiguous"] is True:
+            abstain_reason = "marked_unclear"
+
+            if stage2_verification.get("evidence_match") == "insufficient":
+                abstain_reason = "invalid_mismatch_type"
+
+            return VerificationResult(
+                answers_question=None, mismatch_type=None, mismatch_detail=None, repair_hint=None,
+                ambiguous=True, should_abstain=True, abstain_reason=abstain_reason,
+                confidence=stage2_verification.get("confidence") or "low", raw_output=json.dumps(raw_outputs, ensure_ascii=False),
+                invalid_mismatch_type=stage2_verification.get("invalid_mismatch_type"), error=None, probes_used=probes_used,
+                probe_trajectory=probe_trajectory, stage2_answers_question=stage2_verification["answers_question"],
+                stage2_ambiguous=stage2_verification["ambiguous"], stage3_ran=False, **_stage2_evidence_debug(stage2_verification),
+            )
+
+        try:
+            stage3_prompt = build_stage3_repair_prompt(
+                question=question,
+                intent_representation=current_intent,
+                execution_profile=execution_profile,
+                stage2_verdict=stage2_verification,
+            )
+
+            raw_stage3 = self.llm_generate_fn(stage3_prompt)
+            raw_outputs.append({"step": "stage3_repair", "raw": raw_stage3})
+            
+            stage3_parsed = parse_verifier_json(raw_stage3)
+            stage3_repair = normalise_stage3_repair_output(stage3_parsed)
+
+            return VerificationResult(
+                answers_question=False, mismatch_type=stage2_verification["primary_mismatch_type"],
+                mismatch_detail=stage2_verification["mismatch_detail"], repair_hint=stage3_repair["repair_hint"],
+                ambiguous=False, should_abstain=False, abstain_reason=None, confidence=stage3_repair["confidence"],
+                raw_output=json.dumps(raw_outputs, ensure_ascii=False), invalid_mismatch_type=None, error=None,
+                probes_used=probes_used, probe_trajectory=probe_trajectory, stage2_answers_question=stage2_verification["answers_question"],
+                stage2_ambiguous=stage2_verification["ambiguous"], stage3_ran=True, **_stage2_evidence_debug(stage2_verification),
+            )
+
+        except Exception as exc:
+            return VerificationResult(
+                answers_question=False, mismatch_type=stage2_verification["primary_mismatch_type"],
+                mismatch_detail=stage2_verification["mismatch_detail"], repair_hint=None,
+                ambiguous=False, should_abstain=False, abstain_reason=None, confidence=stage2_verification.get("confidence"),
+                raw_output=json.dumps(raw_outputs, ensure_ascii=False), invalid_mismatch_type=None,
+                error=f"Stage 3 repair-hint generation failed: {exc}", probes_used=probes_used,
+                probe_trajectory=probe_trajectory, stage2_answers_question=stage2_verification["answers_question"],
+                stage2_ambiguous=stage2_verification["ambiguous"], stage3_ran=True, **_stage2_evidence_debug(stage2_verification),
+            )
+
+
 def verify_execution_profile(
     question: str,
     execution_profile: str,
     llm_generate_fn: Callable[[str], str],
+    intent_representation: dict[str, Any] | None = None,
+    probing_mode: str = "hybrid",
+    max_probes: int = 7,
+    profile_mode: str = "compact",
 ) -> VerificationResult:
-    """Run the two-stage semantic verifier over an execution profile."""
-    status = detect_profile_status(execution_profile)
+    """Run the multi-stage semantic verifier over an execution profile."""
+    if intent_representation is None:
+        intent_representation = {"question": question, "_warning": "Legacy fallback: No intent provided."}
 
-    if status in ABSTAIN_STATUSES:
-        return VerificationResult(
-            answers_question=None,
-            mismatch_type=None,
-            mismatch_detail=None,
-            repair_hint=None,
-            ambiguous=True,
-            should_abstain=True,
-            abstain_reason=status,
-            confidence=None,
-            raw_output=None,
-            invalid_mismatch_type=None,
-            error=None,
-            stage1_answers_question=None,
-            stage1_ambiguous=None,
-            stage2_ran=False,
-        )
-
-    stage1_raw_output = None
-    stage2_raw_output = None
-
-    try:
-        stage1_prompt = build_stage1_verdict_prompt(
-            question=question,
-            execution_profile=execution_profile,
-        )
-
-        stage1_raw_output = llm_generate_fn(stage1_prompt)
-        stage1_parsed = parse_verifier_json(stage1_raw_output)
-        stage1 = normalise_stage1_output(stage1_parsed)
-
-    except MaxTokensReachedError:
-        return VerificationResult(
-            answers_question=None,
-            mismatch_type=None,
-            mismatch_detail=None,
-            repair_hint=None,
-            ambiguous=True,
-            should_abstain=True,
-            abstain_reason="stage1_max_tokens_reached",
-            confidence=None,
-            raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
-            invalid_mismatch_type=None,
-            error="Stage 1 LLM generation was truncated due to max token limit.",
-            stage1_answers_question=None,
-            stage1_ambiguous=None,
-            stage2_ran=False,
-        )
-
-    except Exception as exc:
-        return VerificationResult(
-            answers_question=None,
-            mismatch_type=None,
-            mismatch_detail=None,
-            repair_hint=None,
-            ambiguous=True,
-            should_abstain=True,
-            abstain_reason="invalid_stage1_verifier_output",
-            confidence=None,
-            raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
-            invalid_mismatch_type=None,
-            error=str(exc),
-            stage1_answers_question=None,
-            stage1_ambiguous=None,
-            stage2_ran=False,
-        )
-
-    if stage1["answers_question"] is True:
-        return VerificationResult(
-            answers_question=True,
-            mismatch_type=None,
-            mismatch_detail=None,
-            repair_hint=None,
-            ambiguous=False,
-            should_abstain=False,
-            abstain_reason=None,
-            confidence=stage1.get("confidence"),
-            raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
-            invalid_mismatch_type=None,
-            error=None,
-            stage1_answers_question=True,
-            stage1_ambiguous=False,
-            stage2_ran=False,
-            **_stage1_evidence_debug(stage1),
-        )
-
-    if stage1["answers_question"] is None or stage1["ambiguous"] is True:
-        abstain_reason = "stage1_marked_unclear"
-
-        if stage1.get("evidence_match") == "insufficient":
-            abstain_reason = "invalid_stage1_mismatch_type"
-
-        return VerificationResult(
-            answers_question=None,
-            mismatch_type=None,
-            mismatch_detail=None,
-            repair_hint=None,
-            ambiguous=True,
-            should_abstain=True,
-            abstain_reason=abstain_reason,
-            confidence=stage1.get("confidence") or "low",
-            raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
-            invalid_mismatch_type=stage1.get("invalid_mismatch_type"),
-            error=None,
-            stage1_answers_question=stage1["answers_question"],
-            stage1_ambiguous=stage1["ambiguous"],
-            stage2_ran=False,
-            **_stage1_evidence_debug(stage1),
-        )
-
-    try:
-        stage2_prompt = build_stage2_repair_prompt(
-            question=question,
-            execution_profile=execution_profile,
-            stage1_verdict=stage1,
-        )
-
-        stage2_raw_output = llm_generate_fn(stage2_prompt)
-        stage2_parsed = parse_verifier_json(stage2_raw_output)
-        stage2 = normalise_stage2_output(stage2_parsed)
-
-        return VerificationResult(
-            answers_question=False,
-            mismatch_type=stage1["primary_mismatch_type"],
-            mismatch_detail=stage1["mismatch_detail"],
-            repair_hint=stage2["repair_hint"],
-            ambiguous=False,
-            should_abstain=False,
-            abstain_reason=None,
-            confidence=stage2["confidence"],
-            raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
-            invalid_mismatch_type=None,
-            error=None,
-            stage1_answers_question=stage1["answers_question"],
-            stage1_ambiguous=stage1["ambiguous"],
-            stage2_ran=True,
-            **_stage1_evidence_debug(stage1),
-        )
-
-    except Exception as exc:
-        return VerificationResult(
-            answers_question=False,
-            mismatch_type=stage1["primary_mismatch_type"],
-            mismatch_detail=stage1["mismatch_detail"],
-            repair_hint=None,
-            ambiguous=False,
-            should_abstain=False,
-            abstain_reason=None,
-            confidence=stage1.get("confidence"),
-            raw_output=_pack_raw_outputs(stage1_raw_output, stage2_raw_output),
-            invalid_mismatch_type=None,
-            error=f"Stage 2 repair-hint generation failed: {exc}",
-            stage1_answers_question=stage1["answers_question"],
-            stage1_ambiguous=stage1["ambiguous"],
-            stage2_ran=True,
-            **_stage1_evidence_debug(stage1),
-        )
+    verifier = SemanticVerifier(
+        llm_generate_fn=llm_generate_fn,
+        probing_mode=probing_mode,
+        max_probes=max_probes,
+        profile_mode=profile_mode,
+    )
+    return verifier.verify(
+        question=question,
+        intent=intent_representation,
+        execution_profile=execution_profile,
+    )
 
 
 def verify_decompiled_sql(
     question: str,
     execution_profile: str,
     llm_generate_fn: Callable[[str], str],
+    **kwargs,
 ) -> VerificationResult:
     """Backward-compatible alias for older runner imports."""
     return verify_execution_profile(
         question=question,
         execution_profile=execution_profile,
         llm_generate_fn=llm_generate_fn,
+        **kwargs,
     )
