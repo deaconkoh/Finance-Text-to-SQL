@@ -19,7 +19,7 @@ from typing import Any, Iterable
 import sqlglot
 from sqlglot import exp
 
-from src.eval.evaluate_outputs import (
+from src.eval.evaluate_baseline_sql import (
     compare_results,
     execute_sql,
     has_order_by,

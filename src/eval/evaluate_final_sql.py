@@ -1,14 +1,14 @@
 """Evaluate final SQL after applying FinVeriSQL repairs.
 
 This script adapts repair-generation rows into the standard BookSQL evaluation
-shape, then reuses ``src.eval.evaluate_outputs`` so reportable metrics match the
-baseline evaluator.
+shape, then reuses ``src.eval.evaluate_baseline_sql`` so reportable metrics
+match the baseline evaluator.
 
 For each input row:
     final generated_sql = repaired_sql if present, else original_generated_sql
 
 Example:
-    python -m src.eval.evaluate_repaired_outputs \
+    python -m src.eval.evaluate_final_sql \
       --input-jsonl data/outputs/finverisql/dev_diagnostics/exp05_sample_2000/repairs_identified__seed42_smoke.jsonl \
       --output-jsonl data/outputs/finverisql/dev_diagnostics/exp05_sample_2000/repairs_final_sql_evaluated.jsonl \
       --metrics-json data/outputs/finverisql/dev_diagnostics/exp05_sample_2000/repairs_final_sql_metrics.json \
@@ -35,7 +35,7 @@ for import_root in (PROJECT_ROOT, SRC_ROOT):
         sys.path.insert(0, str(import_root))
 
 try:
-    from src.eval.evaluate_outputs import (
+    from src.eval.evaluate_baseline_sql import (
         GROUP_A,
         GROUP_B,
         GROUP_C,
@@ -51,7 +51,7 @@ try:
     )
     from src.utils.data_utils import get_booksql_db_path
 except ModuleNotFoundError:
-    from eval.evaluate_outputs import (
+    from eval.evaluate_baseline_sql import (
         GROUP_A,
         GROUP_B,
         GROUP_C,
@@ -119,7 +119,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--treat-empty-results-as-ambiguous",
         action="store_true",
-        help="Route empty/null result patterns to Group D, matching evaluate_outputs.py.",
+        help="Route empty/null result patterns to Group D, matching evaluate_baseline_sql.py.",
     )
     parser.add_argument(
         "--evaluate-subset",

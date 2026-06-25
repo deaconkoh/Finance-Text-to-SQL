@@ -13,7 +13,7 @@ from typing import Any
 from tqdm import tqdm
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = PROJECT_ROOT / "src"
 
 for import_root in (PROJECT_ROOT, SRC_ROOT):
@@ -22,11 +22,11 @@ for import_root in (PROJECT_ROOT, SRC_ROOT):
 
 
 try:
-    from src.eval.evaluate_outputs import compare_results, execute_sql, has_order_by, result_preview
+    from src.eval.evaluate_baseline_sql import compare_results, execute_sql, has_order_by, result_preview
     from src.finverisql.repair_runner import read_jsonl
     from src.utils.data_utils import get_booksql_db_path
 except ModuleNotFoundError:
-    from eval.evaluate_outputs import compare_results, execute_sql, has_order_by, result_preview
+    from eval.evaluate_baseline_sql import compare_results, execute_sql, has_order_by, result_preview
     from finverisql.repair_runner import read_jsonl
     from utils.data_utils import get_booksql_db_path
 

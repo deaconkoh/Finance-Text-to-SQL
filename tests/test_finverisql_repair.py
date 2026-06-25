@@ -25,7 +25,7 @@ from src.finverisql.repair_runner import (
     classify_candidate_row,
     stable_context_hash,
 )
-from scripts.evaluate_finverisql_repairs import (
+from src.eval.evaluate_repair_candidates import (
     build_metrics as build_repair_evaluation_metrics,
     evaluate_repair_row,
 )

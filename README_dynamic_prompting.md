@@ -84,125 +84,61 @@ result["gold_result"]       = gold_result
 result["execution_match"]   = (gen_result == gold_result)
 ```
 
-### Accounting-Adversarial Test Suite Accuracy
+### Accounting-Semantic Accuracy (ASA)
 
-Execution accuracy on the original BookSQL database remains the main outcome metric. However, exact-result matching on a single naturally occurring database can hide accounting-semantic mistakes when the data distribution is not discriminative. A generated query may use `Debit` instead of `Credit`, count transactions instead of summing `Quantity`, swap customer and vendor scope, or use a status proxy for a monetary balance and still return the same result on sparse or symmetric data.
+Execution accuracy on the original BookSQL database remains necessary, but exact-result matching alone can hide finance-semantic mistakes. A generated query may use `Debit` instead of `Credit`, count transactions instead of summing `Quantity`, swap financial scope, or use a status proxy for a monetary balance and still return the same result on sparse or symmetric data.
 
-To expose these cases, the headline supporting metric is **Accounting-Adversarial Test Suite Accuracy**. It is an execution-based adversarial diagnostic, not another LLM judge. For each evaluated row, the metric builds a fresh SQLite fixture with the BookSQL schema and deterministic accounting stress data, then re-executes the gold and generated SQL on that fixture.
-
-Fixture construction uses this hybrid design:
+The active headline finance-aware metric is **Accounting-Semantic Accuracy (ASA)**:
 
 ```text
-cloned BookSQL schema
-+ universal accounting base fixture
-+ gold-SQL literal seeds
-+ template-specific stress rows
+ASA(x) = 1[EX(x) = 1 and Inv(x) = 1]
 ```
 
-The universal fixture contains BookSQL-faithful support rows for `chart_of_accounts`, `customers`, `vendors`, `products`, `payment_method`, and `employees`, plus balanced double-entry `master_txn_table` groups for invoices, bills, and deposits. `Transaction_TYPE` values are restricted to the observed BookSQL literals `invoice`, `bill`, and `deposit`. The fixture deliberately does not infer income, asset, or liability meaning from the `deposit` label; financial meaning comes from account names joined to `chart_of_accounts.Account_type` or other schema-grounded account metadata. Paid status is represented only by `AR_paid = 'paid'` or `AP_paid = 'paid'`; null and `--` mean missing or not applicable, not unpaid.
+`EX` is the original execution-match result on the BookSQL database. `Inv` is deterministic invariant validity from the Financial Contradiction Rate (FCR) checker:
 
-Gold SQL literals are seeded conservatively. Customer, vendor, product, payment-method, and account-name literals from the gold SQL are inserted so gold filters can execute on the fixture. Account-type literals receive accounting meaning only when they resolve through known `chart_of_accounts.Account_type` value concepts. Account-name literals may be inserted as names, but they do not receive invented accounting class meaning. Generated-only literals are not seeded by default; if generated SQL references a literal that was not seeded and the gold query is executable and non-empty, that generated query must still succeed on the fixture or it fails the adversarial test.
+| FCR status                     |    Inv | Meaning                                                                                                                                     |
+| ------------------------------ | -----: | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `no_financial_contradiction`   |    `1` | No deterministic hard financial contradiction was found.                                                                                    |
+| `hard_financial_contradiction` |    `0` | The generated SQL changes financial meaning in a narrow, deterministic way.                                                                 |
+| `not_evaluable`                | `None` | The checker cannot safely decide because of parse failure, unsupported finance-bearing lineage/expression, or missing financial annotation. |
 
-Templates are activated only by schema-grounded evidence in the gold SQL. This keeps the metric from testing accounting concepts that the gold query itself does not mention. The current template families are:
+ASA therefore measures whether the final SQL both matches the original execution result and avoids deterministic hard financial contradictions. It is not an LLM judge and it does not call the verifier or repairer. Gold SQL is used only for offline evaluation through original execution matching and FCR comparison.
 
-| Template | Accounting confusion tested | Exact preflight requirement |
-| -------- | --------------------------- | --------------------------- |
-| `posting_side_debit_credit` | Debit/credit reversal or unresolved posting side. | Gold-relevant slice has `SUM(Credit) != SUM(Debit)`. |
-| `ar_ap_scope` | Accounts receivable vs accounts payable scope. | AR probe differs from AP probe. |
-| `income_expense_scope` | Income/revenue vs expense/cost scope. | Income total differs from expense total. |
-| `asset_liability_scope` | Asset-side vs liability-side scope. | Asset-side probe differs from liability-side probe. |
-| `balance_count_status_proxy` | Monetary stock/balance replaced by row count or paid-status proxy. | Monetary balance total differs from row/status counts. |
-| `quantity_transaction_count` | Quantity sold replaced by row count or distinct transaction count. | `SUM(Quantity)` differs from `COUNT(*)` and `COUNT(DISTINCT Transaction_ID)`. |
-| `transaction_type_scope` | Invoice, bill, and deposit transaction-type scope mistakes. | Observed transaction-type probes are non-empty and distinct where relevant. |
-| `customer_vendor_scope` | Customer scope swapped with vendor scope. | Customer and vendor probes are non-empty and distinct. |
+Each row is evaluated as follows:
 
-A template is excluded rather than counted when the gold SQL errors, the gold SQL returns an empty result, or the template preflight is non-discriminative. Once gold execution succeeds, gold output is non-empty, and preflight passes, generated SQL is judged adversarially: generated SQL errors, empty generated output, or output mismatch against gold are failures.
+| Condition                              |     EX |    Inv | `asa_strict` | `asa_lower_bound` | Decision available |
+| -------------------------------------- | -----: | -----: | -----------: | ----------------: | ------------------ |
+| missing `execution_match`              | `None` | `None` |       `None` |            `None` | no                 |
+| `execution_match = False`              |    `0` | `None` |          `0` |               `0` | yes                |
+| `execution_match = True`, `Inv = 1`    |    `1` |    `1` |          `1` |               `1` | yes                |
+| `execution_match = True`, `Inv = 0`    |    `1` |    `0` |          `0` |               `0` | yes                |
+| `execution_match = True`, `Inv = None` |    `1` | `None` |       `None` |               `0` | no                 |
 
-The row-level adversarial output records:
+For EX-failing rows, ASA is decisively zero and the invariant checker is not run. For EX-passing rows where FCR is not evaluable, strict ASA is unknown and the lower-bound ASA value is zero.
 
-```text
-question_id
-set label
-gold SQL and generated SQL
-original execution_match
-applicable templates
-tested templates
-adversarial_pass
-failed templates
-gold-error, gold-empty, and preflight exclusions
-template-level errors
-gold/generated output previews for failed templates
-generated-only literal debug records
-```
+FCR remains the deterministic diagnostic source behind `Inv`. Current hard finding coverage includes posting-side reversals, incompatible financial filters, balance/count proxy substitutions, rate-as-total-amount substitutions, invoice/bill transaction-type substitutions, balance-stock-to-flow substitutions, and incompatible financial selected outputs. FCR warnings are recorded for analysis but do not make `Inv = 0`; only hard contradictions fail the invariant.
 
-Generated-only literal debug records include the literal value, column/table when known, template name, whether the literal appears in schema value concepts, whether it appears in fixture seed values, and a reason such as `generated_unseeded_literal_failure` or `generated_literal_not_in_fixture`.
+The active ASA implementation lives in:
 
-The aggregate report includes:
+- `src/asa_metrics/asa_metrics.py`
+- `src/asa_metrics/financial_contradiction.py`
+- `src/eval/evaluate_asa.py`
 
-| Metric | Meaning |
-| ------ | ------- |
-| `original_execution_accuracy` | Original exact-result accuracy on the evaluated BookSQL outputs, excluding rows already marked outside primary execution metrics. |
-| `accounting_adversarial_test_suite_accuracy` | Fraction of adversarial-tested rows whose generated SQL matches gold on all activated, preflight-passing templates. |
-| `original_ex_pass_adversarial_fail_rate` | Fraction of original execution-correct rows that fail at least one adversarial template. This estimates hidden finance-semantic risk in exact-match successes. |
-| `adversarial_testability_rate` | Fraction of rows with at least one activated, preflight-passing adversarial template. |
-| Template counts | Per-template applicable, tested, and failure counts. |
-| Exclusion counts | Gold-error, gold-empty, and non-discriminative-preflight exclusions. |
-| Not-testable reasons | Counts for rows without schema-grounded template evidence or excluded by gold/preflight conditions. |
-
-Run the metric with:
+Run ASA with:
 
 ```bash
-python scripts/evaluate_accounting_adversarial_metrics.py \
-  --before-jsonl data/outputs/evaluated/qwen_zero_shot_validation_evaluated.jsonl \
-  --after-jsonl data/outputs/finverisql/dev_diagnostics/exp05_sample_2000/repairs_final_sql_evaluated.jsonl \
-  --output-json data/outputs/debug/accounting_adversarial_metrics.json \
-  --output-md data/outputs/debug/accounting_adversarial_metrics.md \
-  --row-output-jsonl data/outputs/debug/accounting_adversarial_rows.jsonl \
-  --fixture-date 2026-06-23
-```
-
-### Financial Contradiction Rate Diagnostic
-
-Financial Contradiction Rate (FCR) is a deterministic, schema-grounded diagnostic for finance-semantic contradictions between gold SQL and generated SQL. It is separate from exact execution match and from the Accounting-Adversarial Test Suite: FCR inspects SQL meaning directly and emits one primary status per row:
-
-| Status | Meaning |
-| ------ | ------- |
-| `hard_financial_contradiction` | The generated SQL changes a financial meaning in a narrow, deterministic way. |
-| `no_financial_contradiction` | No hard contradiction was detected, though warnings may still be emitted. |
-| `not_evaluable` | The SQL cannot be safely evaluated for financial contradiction because of parse failure, unsupported finance-bearing lineage/expression, or missing financial annotation. |
-
-The active implementation is `src.finverisql.financial_contradiction`. The metrics script imports that active module and writes aggregate metrics, row diagnostics, hard finding code counts, and a deterministic audit file for newly added hard rules.
-
-Current hard finding coverage includes the existing deterministic rules plus three narrow additions:
-
-| Finding code | Hard contradiction covered | Important non-hard boundaries |
-| ------------ | -------------------------- | ----------------------------- |
-| `rate_as_total_amount_substitution` | Gold selects a total monetary flow amount such as `SUM(Credit)`, `SUM(Debit)`, or `SUM(Amount)`, while generated SQL selects `Rate`, `SUM(Rate)`, or `AVG(Rate)` as the answer measure. | Does not fire for stock balances, `Quantity * Rate`, gold `AVG(Rate)`, gold `Rate`, or rate columns used only in filters. `Amount` is included only for total-amount-versus-unit-rate substitution, not debit/credit direction or account-class contradictions. |
-| `invoice_bill_transaction_type_substitution` | Gold and generated SQL directly substitute mapped `Transaction_TYPE` filter concepts `invoice` and `bill`, using schema `value_concepts` with case-normalized literal matching. | Does not fire for missing transaction-type filters, `deposit`, unmapped literals, or transaction-type references outside filters. |
-| `balance_stock_replaced_by_flow_amount` | Gold selects a point-in-time stock/balance measure such as `Open_balance`, `customers.Balance`, or `vendors.Balance`, while generated SQL directly selects transaction-level flow amount columns such as `Credit`, `Debit`, or `Amount`. | Does not add balance reconstruction logic and does not fire for balance-to-balance substitutions, same-flow comparisons, or flow columns used only in filters. Existing valid derived-balance behavior is preserved. |
-
-Run the FCR metric with:
-
-```bash
-python scripts/evaluate_financial_contradiction_metrics.py \
+python -m src.eval.evaluate_asa \
   --before-jsonl data/outputs/evaluated/qwen_few_shot_validation_evaluated.jsonl \
   --after-jsonl data/outputs/finverisql/dev_diagnostics/exp05_sample_2000/repairs_final_sql_evaluated.jsonl \
   --schema-path data/booksql/schema_annotations.json \
-  --output-json data/outputs/finverisql/dev_diagnostics/exp05_sample_2000/financial_contradiction_metrics.json \
-  --output-md data/outputs/finverisql/dev_diagnostics/exp05_sample_2000/financial_contradiction_metrics.md \
-  --row-output-jsonl data/outputs/finverisql/dev_diagnostics/exp05_sample_2000/financial_contradiction_rows.jsonl
+  --output-json data/outputs/metrics_experiments/exp02_asa_fcr_v2/baseline_vs_repairs_final_sql_asa_metrics.json \
+  --output-md data/outputs/metrics_experiments/exp02_asa_fcr_v2/baseline_vs_repairs_final_sql_asa_metrics.md \
+  --row-output-jsonl data/outputs/metrics_experiments/exp02_asa_fcr_v2/baseline_vs_repairs_final_sql_asa_rows.jsonl
 ```
 
-The same run writes `reports/fcr_new_rules_audit.json` by default. Audit examples are grouped by the three new hard finding codes and include `question_id`, gold SQL, generated SQL, `execution_match` when present, finding explanation, and gold/generated evidence. On the current joined few-shot baseline vs repair-final run, none of the 1,701 joined rows hit the three new hard codes, so the audit file contains empty example arrays for those codes.
+The row-level ASA output records `EX`, `Inv`, `asa_strict`, `asa_lower_bound`, decision availability, FCR primary status, hard finding codes, not-evaluable codes, and warning codes. Aggregate reports include execution accuracy, ASA strict accuracy, ASA lower-bound accuracy, invariant evaluability, FPER, FPER lower bound, hard finding counts, and not-evaluable reason counts.
 
-Latest FCR validation run:
-
-| Set | Rows | Evaluable | Hard FCR | No contradiction | Not evaluable | Execution accuracy |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| before | 1,701 | 1,523 | 0.0624 | 0.9376 | 0.1046 | 0.6890 |
-| after | 1,701 | 1,505 | 0.0631 | 0.9369 | 0.1152 | 0.7155 |
-
-Hard finding subtype counts in this run were dominated by `posting_side_reversal` among evaluable hard rows. The newly added hard codes had zero observed examples in the joined evaluation files, but are covered by active unit tests in `tests/test_financial_contradiction.py`.
+Accounting-adversarial fixture evaluation and Eq_acct are no longer part of the active ASA pipeline. They remain archived as legacy research code under `src/asa_metrics/old/` and should not be presented as the current headline metric.
 
 Each Baseline Model will be run using zero-shot and few-shot settings, while keeping prompts identical across models.
 
@@ -759,7 +695,7 @@ The query may involve unsupported lineage, unresolved ambiguity, or insufficient
 Please inspect this case manually or provide additional clarification.
 ```
 
-`scripts/run_finverisql_repair.py` only routes repair candidates and generates repaired SQL. It does not execute repaired SQL, rerun the verifier, or decide whether a repair succeeded. Use `scripts/evaluate_finverisql_repairs.py` to execute repaired SQL, compare against gold, and compute repair success and execution-accuracy contribution.
+`scripts/run_finverisql_repair.py` only routes repair candidates and generates repaired SQL. It does not execute repaired SQL, rerun the verifier, or decide whether a repair succeeded. Use `python -m src.eval.evaluate_repair_candidates` to execute repaired SQL, compare against gold, and compute repair success and execution-accuracy contribution.
 
 ```text
 {
@@ -777,93 +713,114 @@ Please inspect this case manually or provide additional clarification.
 }
 ```
 
-## Ablations
+## **Ablations and Evaluation Setup**
 
-There will be 2 main forms of comparison system: a main comparison table and an internal ablation table. The main comparison table compares FinVeriSQL against the simplest non-domain-specific baselines. The internal ablation table removes one component from the final system at a time.
+The evaluation uses two types of comparisons:
 
-### Main Comparison Table (Test Set):
+1. **Main system comparison**, which compares FinVeriSQL against simple non-domain-specific baselines.
+2. **Internal ablation**, which removes or changes one FinVeriSQL component at a time to measure its contribution.
 
-| System                          | Purpose                                                                                                                                                                                                                                                                                                                                                   |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Generator only                  | Baseline Text-to-SQL system. The model generates SQL directly from the question and schema, with no verification or repair. This measures the original execution accuracy and executable-wrong rate.                                                                                                                                                      |
-| Generator + generic self-refine | Generic LLM repair baseline. The generated SQL is passed back to an LLM for reflection or revision using the question and schema, but without finance-specific metadata, compact semantic profiling, structured intent decomposition, or accounting-aware error categories. This tests whether generic prompting alone can fix financial SQL errors.      |
-| Generator + FinVeriSQL full     | Main proposed system. FinVeriSQL decomposes the user question into a metadata-aware financial intent representation, compares it against a compact schema-grounded semantic profile of the candidate SQL, optionally probes ambiguous checks, classifies confirmed mismatches into the finance-specific error space, and generates targeted repair hints. |
+The main evaluation objective is to determine whether FinVeriSQL improves final SQL correctness while avoiding harmful over-repair.
 
-### Internal Ablation Table (Evaluation Set):
+The four core metrics reported are:
 
-The current runner supports profile-level ablations using `--profile-mode`. Additional ablations can be implemented by changing whether intent decomposition, probing, abstention, or finance-specific metadata is available.
+Execution Accuracy (EX)  
+Detection F1  
+Correction Rate  
+Corruption Rate
 
-| System / Ablation                  | Purpose                                                                                                                                                                                                 |
-| :--------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **FinVeriSQL (Full)**              | The complete proposed system using the current best-performing configuration: `probe` probing, `nl_only` intent decomposition, `compact` semantic profile, and abstention.                           |
-| **w/o Intent Decomposer**          | Uses `--intent-mode none`. Tests whether explicit decomposition of the question into a structured intent representation improves verification and repair over direct question-to-profile comparison.   |
-| **Metadata-guided vs NL-only**     | Compares `--intent-mode metadata_guided` against `--intent-mode nl_only` while keeping the rest of the verifier fixed. Tests whether injecting business glossary metadata into Stage 1 helps or hurts. |
-| **w/o Probing / direct only**      | Uses `--probing-mode none`. Relies only on direct Stage 2 intent/profile comparison. Tests whether targeted probing resolves ambiguity well enough to justify the added complexity and latency.        |
-| **w/o Compact Semantic Profile**   | Uses `--profile-mode ast`. The verifier only sees parsed SQL structure, not schema-grounded financial semantics. Tests whether semantic grounding is necessary beyond raw SQL structure.                |
-| **w/o Error Classes in Repair**    | Removes `primary_mismatch_type` from the Stage 3 repair prompt while keeping the failed evidence and repair hint unchanged. Tests whether the 3-class mismatch taxonomy adds value to downstream repair. |
+Together, these metrics separate final task performance from the mechanisms that produce it.
 
-Example compact-mode verifier command:
+---
 
-```bash
-python scripts/run_finverisql_verify.py \
-    --input-path data/outputs/evaluated/qwen_few_shot_validation_evaluated.jsonl \
-    --output-path data/outputs/finverisql/dev_diagnostics/exp02_NL_intent/verified_groupB_probe_sample20.jsonl \
-    --schema-path data/booksql/schema_annotations.json \
-    --intent-cache-path data/outputs/finverisql/dev_diagnostics/intent/NL_intents_groupB_gemma.jsonl \
-    --require-intent-cache \
-    --intent-mode nl_only \
-    --evaluation-group "B_wrong_executable" \
-    --limit 20 \
-    --probing-mode probe \
-    --backend mlx-lm \
-    --model-name mlx-community/Llama-3.1-8B-Instruct-4bit
-```
+### **Main Comparison Table**
 
-Example internal ablation commands:
+The main comparison table is evaluated on the test set.
 
-```bash
-# AST-only verifier input
-python scripts/run_finverisql_verify.py ... --profile-mode ast
+| System                               | Purpose                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Generator only**                   | Baseline Text-to-SQL system. The model generates SQL directly from the question and schema, with no verification or repair. This measures the original execution accuracy.                                                                                                                                                                                                    |
+| **Generator \+ generic self-refine** | Generic LLM repair baseline. The generated SQL is passed back to an LLM for reflection or revision using the question and schema, but without FinVeriSQL’s finance-specific verifier, metadata-aware intent representation, compact semantic profile, probing, or accounting-aware error classes. This tests whether generic self-correction alone can improve financial SQL. |
+| **Generator \+ FinVeriSQL full**     | Main proposed system. FinVeriSQL verifies candidate SQL using a schema-grounded financial intent/profile comparison, optionally probes ambiguous checks, classifies confirmed mismatches into finance-aware error classes, and generates targeted repair hints.                                                                                                               |
 
-# Full semantic profile verifier input
-python scripts/run_finverisql_verify.py ... --profile-mode semantic
+Recommended main comparison table:
 
-# Compact semantic profile verifier input
-python scripts/run_finverisql_verify.py ... --profile-mode compact
-```
+| System                           | EX Accuracy | ASA Metrics | Correction Rate | Corruption Rate | Net Repair Gain |
+| -------------------------------- | ----------- | ----------- | --------------- | --------------- | --------------- |
+| Generator only                   | ...         | –           | –               | –               | –               |
+| Generator \+ generic self-refine | ...         | ...         | ...             | ...             | ...             |
+| Generator \+ FinVeriSQL full     | ...         | ...         | ...             | ...             | ...             |
 
-### Evaluation Metrics:
+For the main comparison table:
 
-The final report should separate the main outcome metric from supporting diagnostic metrics.
+ΔEX vs Generator \= EX(system) \- EX(generator only)
 
-#### Main Metric
+`Correction Rate`, `Corruption Rate`, and `Net Repair Gain` explain why EX changes.
 
-| Metric                 | Purpose                                                                                                                                         | How to Report                                                                                                                                                 |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Execution Accuracy** | Measures whether the final SQL output returns the same execution result as the gold SQL. This is the primary correctness metric for the system. | Report before and after FinVeriSQL: baseline generator execution accuracy, post-verification/repair execution accuracy, and absolute percentage-point change. |
+| System          | Baseline FCR Failures | FCR Caught | FCR Attempted | FCR Fixed | FCR Fixed \+ EX Preserved |
+| --------------- | --------------------- | ---------- | ------------- | --------- | ------------------------- |
+| FinVeriSQL full | ...                   | ...        | ...           | ...       | ...                       |
 
-#### Supporting Metrics
+These diagnostics explain whether FinVeriSQL is reducing deterministic hard financial contradictions, not just improving general execution accuracy.
 
-| Metric                                                   | Purpose                                                                                                                                                                      | How to Report                                                                                                                                                                                                                         |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Detection F1**                                         | Measures whether the verifier identifies executable-but-wrong SQL without relying on repair success. This evaluates detection quality on labelled Group A and Group B cases. | Treat Group B wrong-executable SQL as positive and Group A correct-executable SQL as negative. Report precision, recall, and F1.                                                                                                      |
-| **Corruption Rate**                                      | Measures whether FinVeriSQL harms originally correct SQL. This captures false rejection and harmful repair risk.                                                             | Report the percentage of Group A correct-executable cases that are rejected and/or repaired into execution-incorrect SQL.                                                                                                             |
-| **Repair Rate**                                          | Measures how often wrong executable SQL is successfully repaired after detection.                                                                                            | Report the percentage of repaired Group B cases where repaired SQL becomes execution-correct. Also report the denominator used: detected-only or all Group B.                                                                         |
-| **Accounting-Adversarial Test Suite Accuracy**            | Measures whether generated SQL remains equivalent to gold SQL on deterministic BookSQL-faithful accounting fixtures that make recurring accounting mistakes observable.      | Report before and after FinVeriSQL. Include adversarial accuracy, adversarial testability rate, original-execution-pass/adversarial-fail rate, per-template applicability/test/failure counts, and gold/preflight exclusion counts. |
-| **Original EX Pass, Adversarial Fail Rate**               | Estimates hidden finance-semantic risk among SQL outputs that passed original exact execution matching.                                                                      | Report the fraction of original execution-correct rows that fail at least one activated adversarial template. Break down by template to show which accounting confusion was hidden by the original data.                              |
-| **Adversarial Testability Rate**                         | Measures how often gold SQL provides enough schema-grounded evidence and fixture discrimination for adversarial evaluation.                                                  | Report the fraction of rows with at least one activated, preflight-passing template. Also report not-testable reason counts so low coverage is not mistaken for high robustness.                                                      |
+---
 
-Recommended final metrics table:
+### **Internal Ablation Table**
 
-| System                          | Execution Accuracy | Detection Precision | Detection Recall | Detection F1 | Corruption Rate | Repair Rate | Accounting-Adversarial Accuracy | Original EX Pass, Adv Fail | Adversarial Testability |
-| ------------------------------- | ------------------ | ------------------- | ---------------- | ------------ | --------------- | ----------- | ------------------------------- | -------------------------- | ----------------------- |
-| Generator only                  | ...                | n/a                 | n/a              | n/a          | n/a             | n/a         | ...                             | ...                        | ...                     |
-| Generator + generic self-refine | ...                | n/a                 | n/a              | n/a          | ...             | ...         | ...                             | ...                        | ...                     |
-| Generator + FinVeriSQL full     | ...                | ...                 | ...              | ...          | ...             | ...         | ...                             | ...                        | ...                     |
+The internal ablation table is evaluated on the evaluation/dev set. Each ablation changes one component of FinVeriSQL while keeping the rest of the pipeline as close as possible to the full system.
 
-Execution Accuracy is the main result. Detection F1, Corruption Rate, Repair Rate, Accounting-Adversarial Test Suite Accuracy, original-execution-pass/adversarial-fail rate, and adversarial testability rate are supporting metrics used to explain why the main result changes, what accounting mistakes remain hidden by original database execution, and what risks the verifier introduces.
+| System / Ablation                | Purpose                                                                                                                                                                                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **FinVeriSQL full**              | Complete proposed system using the selected best configuration. This is the reference point for all internal ablations.                                                                                                                                |
+| **w/o Intent Decomposer**        | Removes explicit decomposition of the natural language question into a structured intent representation. Tests whether structured intent helps the verifier identify meaningful SQL mismatches.                                                        |
+| **Metadata-guided vs NL-only**   | Compares metadata-guided intent construction against natural-language-only intent construction while keeping the rest of the verifier fixed. Tests whether business glossary or schema metadata improves verification, or whether it introduces noise. |
+| **w/o Probing / direct only**    | Removes targeted probing and relies only on direct verifier comparison. Tests whether probing helps resolve ambiguous verifier decisions enough to justify its added complexity.                                                                       |
+| **w/o Compact Semantic Profile** | Removes the compact schema-grounded semantic profile and uses a less semantically grounded SQL representation. Tests whether compact financial profiling improves verifier precision and downstream repair.                                            |
+| **w/o Error Classes in Repair**  | Removes the structured mismatch/error class from the repair prompt while keeping the rest of the repair evidence. Tests whether finance-aware error labels help the repairer make more targeted edits.                                                 |
+
+Recommended internal ablation table:
+
+| System / Ablation            | Detection Precision | Detection Recall | Detection F1 | Correction Rate | Corruption Rate | EX Accuracy | ΔEX vs Full |
+| ---------------------------- | ------------------- | ---------------- | ------------ | --------------- | --------------- | ----------- | ----------- |
+| FinVeriSQL full              | ...                 | ...              | ...          | ...             | ...             | ...         | 0.00        |
+| w/o Intent Decomposer        | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
+| Metadata-guided              | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
+| NL-only                      | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
+| w/o Probing / direct only    | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
+| w/o Compact Semantic Profile | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
+| w/o Error Classes in Repair  | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
+
+For the internal ablation table:
+
+ΔEX vs Full \= EX(ablation) \- EX(FinVeriSQL full)
+
+A negative value means removing the component hurts final EX. A positive value means the ablated system performs better than the full system and should be investigated.
+
+---
 
 ## Error Analysis
+
+ASA/FCR Group Membership Audit
+
+To validate whether ASA captures errors that EX alone does not reveal, I audited the baseline hard FCR failures by evaluation group.
+
+The evaluation groups are defined as:
+
+Group A = executable and EX-correct
+Group B = executable but EX-wrong
+Group C = non-executable
+
+All 95 baseline hard FCR failures were found in Group A.
+
+| Group   | Count | Percent |
+| ------- | ----- | ------- |
+| Group A | 95    | 100.0%  |
+| Group B | 0     | 0.0%    |
+| Group C | 0     | 0.0%    |
+
+All 95 hard FCR findings were posting_side_reversal.
+
+This means that the hard accounting contradictions identified by FCR were not cases that EX had already rejected. Instead, they were cases where the generated SQL matched the gold execution output on the original database, but violated a deterministic accounting invariant. This supports the motivation for ASA as a stricter companion to EX: ASA exposes accounting-semantic false positives that execution accuracy alone would count as correct.
 
 There will be reports on errors in three layers.
 

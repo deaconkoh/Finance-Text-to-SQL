@@ -38,7 +38,7 @@ from src.asa_metrics.old.accounting_adversarial import (
     seed_gold_literals,
     txn_line,
 )
-from src.eval.evaluate_outputs import compare_results, execute_sql, has_order_by, result_preview
+from src.eval.evaluate_baseline_sql import compare_results, execute_sql, has_order_by, result_preview
 from src.finverisql.schema_loader import SchemaAnnotationStore, normalise_identifier, normalise_value
 from src.finverisql.sql_parser import parse_sql
 from src.finverisql.sql_semantic_mapping import AnnotatedColumnUse, build_sql_financial_semantics

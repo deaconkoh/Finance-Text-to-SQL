@@ -541,7 +541,7 @@ The query may involve unsupported lineage, unresolved ambiguity, or insufficient
 Please inspect this case manually or provide additional clarification.
 ```
 
-`scripts/run_finverisql_repair.py` only routes repair candidates and generates repaired SQL. It does not execute repaired SQL, rerun the verifier, or decide whether a repair succeeded. Use `scripts/evaluate_finverisql_repairs.py` to execute repaired SQL, compare against gold, and compute repair success and execution-accuracy contribution.
+`scripts/run_finverisql_repair.py` only routes repair candidates and generates repaired SQL. It does not execute repaired SQL, rerun the verifier, or decide whether a repair succeeded. Use `python -m src.eval.evaluate_repair_candidates` to execute repaired SQL, compare against gold, and compute repair success and execution-accuracy contribution.
 
 ```text
 {

@@ -19,13 +19,13 @@ Key Features:
 Examples:
 
 1. Basic full evaluation:
-    python -m src.eval.evaluate_outputs \
+    python -m src.eval.evaluate_baseline_sql \
       --input-jsonl data/outputs/baseline/baseline_qwen_train_sample_50_few_shot.jsonl \
       --output-jsonl data/outputs/evaluated/50_evaluated_qwen_train_few_shot.jsonl \
       --metrics-json data/outputs/evaluated/50_metrics_qwen_train_few_shot.json
       
 2. Run a quick subset (smoke test of 50 samples):
-    python -m src.eval.evaluate_outputs \
+    python -m src.eval.evaluate_baseline_sql \
       --input-jsonl data/outputs/baseline/baseline_qwen_train_few_shot.jsonl \
       --output-jsonl data/outputs/evaluated/evaluated_qwen_train_subset.jsonl \
       --metrics-json data/outputs/evaluated/metrics_qwen_train_subset.json \
@@ -33,7 +33,7 @@ Examples:
       --subset-size 50
 
 3. Strict evaluation (Treat empty/null results as ambiguous and exclude them):
-    python -m src.eval.evaluate_outputs \
+    python -m src.eval.evaluate_baseline_sql \
       --input-jsonl data/outputs/baseline/baseline_qwen_train_few_shot.jsonl \
       --output-jsonl data/outputs/evaluated/evaluated_qwen_train_few_shot_strict.jsonl \
       --metrics-json data/outputs/evaluated/metrics_qwen_train_few_shot_strict.json \
