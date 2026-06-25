@@ -1,0 +1,13 @@
+{
+  "total_repair_rows": 1713,
+  "attempted_repairs": 662,
+  "generated_repairs": 661,
+  "executable_repairs": 636,
+  "successful_repairs": 156,
+  "group_b_attempted_repairs": 335,
+  "group_c_attempted_repairs": 0,
+  "generation_rate": 0.9984894259818731,
+  "repair_executable_rate": 0.962178517397882,
+  "correction_rate": 0.23564954682779457,
+  "final_execution_accuracy_contribution": 0.09106830122591944
+}

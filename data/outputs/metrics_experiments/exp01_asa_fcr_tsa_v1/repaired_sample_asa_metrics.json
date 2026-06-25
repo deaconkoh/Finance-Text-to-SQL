@@ -1,0 +1,57 @@
+{
+  "join_mode": "single_file",
+  "dedupe_policy": "last",
+  "fixture_date": "2026-06-23",
+  "before_input_rows": 1713,
+  "before_unique_question_ids": 1701,
+  "before_duplicate_rows": 12,
+  "after_input_rows": null,
+  "after_unique_question_ids": null,
+  "after_duplicate_rows": null,
+  "joined_question_ids": 1701,
+  "sets": [
+    {
+      "label": "before",
+      "total_rows": 1701,
+      "execution_match_available_rows": 1701,
+      "ex_pass_rows": 1217,
+      "ex_fail_rows": 484,
+      "asa_decision_available_rows": 1061,
+      "asa_strict_pass_rows": 483,
+      "asa_strict_fail_rows": 578,
+      "asa_lower_bound_pass_rows": 483,
+      "semantic_checks_testable_rows": 577,
+      "eq_acct_testable_rows_among_ex_pass": 751,
+      "inv_evaluable_rows_among_ex_pass": 1029,
+      "ex_accuracy": 0.715461493239271,
+      "asa_strict_accuracy": 0.45523091423185674,
+      "asa_lower_bound_accuracy": 0.2839506172839506,
+      "FPER": 0.16291161178509533,
+      "FPER_lower_bound": 0.6031224322103533,
+      "semantic_check_testability_rate_among_ex_pass": 0.4741166803615448,
+      "eq_acct_testability_rate_among_ex_pass": 0.6170912078882498,
+      "inv_evaluability_rate_among_ex_pass": 0.8455217748562038,
+      "eq_acct_pass_rate": 0.9973368841544608,
+      "inv_pass_rate": 0.9105928085519922,
+      "not_testable_reason_counts": {
+        "eq_acct_not_tested": 466,
+        "ex_failed": 484,
+        "inv_not_evaluable": 188
+      },
+      "fcr_hard_finding_counts": {
+        "posting_side_reversal": 92
+      },
+      "fcr_warning_counts": {
+        "financial_measure_mismatch": 196,
+        "financial_scope_warning": 2310,
+        "output_shape_warning": 45,
+        "unresolved_measure_warning": 3
+      },
+      "eq_acct_template_failure_counts": {
+        "balance_count_status_proxy": 2,
+        "quantity_transaction_count": 2,
+        "transaction_type_scope": 2
+      }
+    }
+  ]
+}

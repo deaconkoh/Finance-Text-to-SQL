@@ -58,6 +58,7 @@ except ModuleNotFoundError:
 DEFAULT_SCHEMA_PATH = "data/booksql/schema_annotations.json"
 DEFAULT_MODEL_NAME = "mlx-community/Llama-3.1-8B-Instruct-4bit"
 DEFAULT_BACKEND = "mlx-lm"
+REPAIR_CONTEXT_VERSION = "schema_sqlite_v1"
 
 
 def parse_args() -> argparse.Namespace:
@@ -162,7 +163,11 @@ def main() -> None:
 
     schema_text = load_schema_text_for_repair(args.schema_path)
     repair_context_hash = stable_context_hash(
-        {"schema_text": schema_text, "intent_mode": args.intent_mode}
+        {
+            "schema_text": schema_text,
+            "intent_mode": args.intent_mode,
+            "repair_context_version": REPAIR_CONTEXT_VERSION,
+        }
     )
 
     completed_keys = load_completed_keys(args.output_path)
@@ -268,7 +273,10 @@ def main() -> None:
                     intent_representation = None
 
         if repair_mode == "semantic":
-            repair_request = build_semantic_repair_request(row)
+            repair_request = build_semantic_repair_request(
+                row=row,
+                schema_text=schema_text,
+            )
             repair_result = repair_semantic_sql(repair_request, repair_generate_fn)
         elif repair_mode == "non_executable":
             repair_request = build_non_executable_repair_request(

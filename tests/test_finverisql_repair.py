@@ -44,6 +44,7 @@ def make_request() -> SemanticRepairRequest:
         repair_hint="Replace row count with the correct monetary aggregation.",
         diagnostic_dimensions={"financial_measure": "contradicted"},
         confidence="high",
+        schema_text="Table invoices(id, amount, invoice_date)",
     )
 
 
@@ -65,9 +66,13 @@ def test_request_and_result_serialize_cleanly() -> None:
 def test_prompt_builder_uses_only_targeted_fields() -> None:
     prompt = build_semantic_repair_prompt(make_request())
 
+    assert "SQLite" in prompt
     assert "Original SQL" in prompt
     assert "Structured intent" in prompt
     assert "Execution profile" in prompt
+    assert "Schema metadata" in prompt
+    assert "Table invoices(id, amount, invoice_date)" in prompt
+    assert "EXTRACT" in prompt
     assert "Primary mismatch type" in prompt
     assert "Failed evidence" in prompt
     assert "Repair hint" in prompt
@@ -117,6 +122,47 @@ def test_repair_normalization_handles_valid_and_malformed_json() -> None:
     )
     assert syntax_success.status == "success"
     assert syntax_success.repaired_sql == "SELECT SUM(amount) FROM invoices;"
+
+
+def test_semantic_repair_recovers_raw_multiline_sql_json_string() -> None:
+    raw_output = """{
+  "repaired_sql": "SELECT
+  SUM(amount)
+FROM invoices;",
+  "edit_summary": "Use SUM(amount).",
+  "confidence": "high"
+}"""
+
+    result = repair_semantic_sql(make_request(), lambda _prompt: raw_output)
+
+    assert result.status == "success"
+    assert result.repaired_sql == "SELECT\n  SUM(amount)\nFROM invoices;"
+    assert result.raw_output == raw_output
+
+
+def test_non_executable_repair_recovers_raw_multiline_sql_json_string() -> None:
+    raw_output = """{
+  "repaired_sql": "SELECT
+  SUM(amount)
+FROM invoices;",
+  "edit_summary": "Closed SUM().",
+  "confidence": "medium"
+}"""
+
+    result = repair_non_executable_sql(
+        NonExecutableRepairRequest(
+            question_id="q2",
+            question="Q",
+            generated_sql="SELECT SUM(amount FROM invoices",
+            execution_error="syntax error",
+            schema_text="schema",
+        ),
+        lambda _prompt: raw_output,
+    )
+
+    assert result.status == "success"
+    assert result.repaired_sql == "SELECT\n  SUM(amount)\nFROM invoices;"
+    assert result.raw_output == raw_output
 
 
 def test_classify_candidate_row_filters_expected_group_b_cases() -> None:
@@ -210,10 +256,11 @@ def test_build_request_maps_verifier_evidence() -> None:
         },
     }
 
-    request = build_semantic_repair_request(row)
+    request = build_semantic_repair_request(row, schema_text="schema")
     assert request.primary_mismatch_type == "financial_measure_error"
     assert request.failed_evidence == ["Used COUNT(*)"]
     assert request.repair_hint == "Use SUM(amount)."
+    assert request.schema_text == "schema"
 
     group_c_request = build_non_executable_repair_request(
         row={

@@ -223,7 +223,10 @@ def _classify_group_c_candidate(row: dict[str, Any]) -> tuple[bool, str | None, 
     return True, "non_executable", None
 
 
-def build_semantic_repair_request(row: dict[str, Any]) -> SemanticRepairRequest:
+def build_semantic_repair_request(
+    row: dict[str, Any],
+    schema_text: str | None = None,
+) -> SemanticRepairRequest:
     verification = row.get("verification") or {}
 
     return SemanticRepairRequest(
@@ -238,6 +241,7 @@ def build_semantic_repair_request(row: dict[str, Any]) -> SemanticRepairRequest:
         repair_hint=verification.get("repair_hint"),
         diagnostic_dimensions=verification.get("stage2_diagnostic_dimensions"),
         confidence=verification.get("confidence"),
+        schema_text=schema_text,
     )
 
 

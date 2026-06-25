@@ -1,0 +1,58 @@
+{
+  "join_mode": "inner_join_question_id",
+  "dedupe_policy": "last",
+  "before_input_rows": 7605,
+  "before_unique_question_ids": 7605,
+  "before_duplicate_rows": 0,
+  "after_input_rows": 1713,
+  "after_unique_question_ids": 1701,
+  "after_duplicate_rows": 12,
+  "joined_question_ids": 1701,
+  "sets": [
+    {
+      "label": "before",
+      "total_rows": 1701,
+      "evaluable_rows": 1523,
+      "status_counts": {
+        "hard_contradiction": 230,
+        "soft_contradiction": 1288,
+        "no_contradiction": 5,
+        "not_evaluable": 178
+      },
+      "hard_financial_contradiction_rate": 0.1510177281680893,
+      "soft_financial_contradiction_rate": 0.8456992777413,
+      "combined_financial_contradiction_rate": 0.9967170059093894,
+      "no_contradiction_rate": 0.003282994090610637,
+      "not_evaluable_rate": 0.10464432686654909,
+      "execution_accuracy": 0.6890064667842446,
+      "execution_correct_rows": 1172,
+      "execution_metric_rows": 1701
+    },
+    {
+      "label": "after",
+      "total_rows": 1701,
+      "evaluable_rows": 1505,
+      "status_counts": {
+        "hard_contradiction": 231,
+        "soft_contradiction": 1269,
+        "no_contradiction": 5,
+        "not_evaluable": 196
+      },
+      "hard_financial_contradiction_rate": 0.15348837209302327,
+      "soft_financial_contradiction_rate": 0.8431893687707641,
+      "combined_financial_contradiction_rate": 0.9966777408637874,
+      "no_contradiction_rate": 0.0033222591362126247,
+      "not_evaluable_rate": 0.11522633744855967,
+      "execution_accuracy": 0.715461493239271,
+      "execution_correct_rows": 1217,
+      "execution_metric_rows": 1701
+    }
+  ],
+  "deltas": {
+    "execution_accuracy_delta": 0.026455026455026398,
+    "combined_financial_contradiction_rate_delta": -3.92650456020327e-05,
+    "hard_financial_contradiction_rate_delta": 0.0024706439249339573,
+    "soft_financial_contradiction_rate_delta": -0.0025099089705359345,
+    "not_evaluable_rate_delta": 0.010582010582010581
+  }
+}

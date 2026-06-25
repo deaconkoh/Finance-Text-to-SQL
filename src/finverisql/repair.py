@@ -26,6 +26,7 @@ class SemanticRepairRequest:
     repair_hint: str | None
     diagnostic_dimensions: dict[str, Any] | None
     confidence: str | None
+    schema_text: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -116,11 +117,17 @@ def build_semantic_repair_prompt(request: SemanticRepairRequest) -> str:
         indent=2,
     )
     execution_profile = _render_targeted_json(request.execution_profile)
+    schema_text = _normalise_optional_str(request.schema_text) or "Not provided."
 
     return f"""
 You are repairing a finance-related SQL query using trusted verifier mismatch evidence.
 
 Your job:
+- The repaired SQL must execute in SQLite.
+- Use only tables and columns present in the provided schema metadata.
+- Use SQLite-compatible date functions such as date(...) and strftime(...).
+- Do not use unsupported SQL syntax such as EXTRACT(...), DATE_TRUNC, INTERVAL,
+  ILIKE, BOOL_OR, BOOL_AND, or vendor-specific functions.
 - Trust the provided mismatch diagnosis. Do not re-verify or reinterpret the mismatch type.
 - Preserve all correct parts of the original SQL.
 - Make the minimum semantic edits needed to fix the stated mismatch.
@@ -134,6 +141,9 @@ Return only valid JSON with exactly these fields:
   "edit_summary": "<short edit summary>",
   "confidence": "high | medium | low"
 }}
+- `repaired_sql` must be a single JSON string. Escape any SQL newlines as `\\n`,
+  or return the SQL on one line.
+- Do not use Markdown fences.
 
 Question ID:
 {request.question_id}
@@ -149,6 +159,9 @@ Structured intent:
 
 Execution profile:
 {execution_profile}
+
+Schema metadata:
+{schema_text}
 
 Primary mismatch type:
 {request.primary_mismatch_type}
@@ -185,6 +198,10 @@ You are repairing a finance-related SQL query that currently does not execute.
 
 Your job:
 - Fix the SQL so it becomes executable in SQLite.
+- Use only tables and columns present in the provided schema.
+- Use SQLite-compatible date functions such as date(...) and strftime(...).
+- Do not use unsupported SQL syntax such as EXTRACT(...), DATE_TRUNC, INTERVAL,
+  ILIKE, BOOL_OR, BOOL_AND, or vendor-specific functions.
 - Preserve the original business intent from the question.
 - Make the minimum changes needed to correct syntax, invalid functions, invalid date expressions, wrong column references, or other execution-breaking issues.
 - Do not broaden or rewrite the query unless that is required to make it executable and aligned with the question.
@@ -197,6 +214,9 @@ Return only valid JSON with exactly these fields:
   "edit_summary": "<short edit summary>",
   "confidence": "high | medium | low"
 }}
+- `repaired_sql` must be a single JSON string. Escape any SQL newlines as `\\n`,
+  or return the SQL on one line.
+- Do not use Markdown fences.
 
 Question ID:
 {request.question_id}
@@ -218,6 +238,108 @@ Schema:
 
 Return only the JSON object.
 """.strip()
+
+
+def _extract_outer_json_object(text: str) -> str | None:
+    """Extract the first balanced JSON object candidate from model output."""
+    start = text.find("{")
+
+    if start == -1:
+        return None
+
+    in_string = False
+    escaped = False
+    depth = 0
+
+    for index in range(start, len(text)):
+        char = text[index]
+
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+
+            if depth == 0:
+                return text[start : index + 1]
+
+    return None
+
+
+def _escape_control_chars_in_json_strings(text: str) -> str:
+    """Escape raw control characters that JSON forbids inside strings."""
+    escaped_chars: list[str] = []
+    in_string = False
+    escaped = False
+
+    for char in text:
+        if in_string:
+            if escaped:
+                escaped_chars.append(char)
+                escaped = False
+                continue
+
+            if char == "\\":
+                escaped_chars.append(char)
+                escaped = True
+                continue
+
+            if char == '"':
+                escaped_chars.append(char)
+                in_string = False
+                continue
+
+            if char == "\n":
+                escaped_chars.append("\\n")
+            elif char == "\r":
+                escaped_chars.append("\\r")
+            elif char == "\t":
+                escaped_chars.append("\\t")
+            elif ord(char) < 0x20:
+                escaped_chars.append(f"\\u{ord(char):04x}")
+            else:
+                escaped_chars.append(char)
+            continue
+
+        escaped_chars.append(char)
+
+        if char == '"':
+            in_string = True
+
+    return "".join(escaped_chars)
+
+
+def _parse_repair_json(raw_output: str) -> dict[str, Any]:
+    """Parse repair JSON, tolerating raw multiline strings in object fields."""
+    try:
+        return parse_verifier_json(raw_output)
+    except Exception as original_exc:
+        candidate = _extract_outer_json_object(raw_output)
+
+        if candidate is None:
+            raise original_exc
+
+        sanitized = _escape_control_chars_in_json_strings(candidate)
+
+        try:
+            parsed = json.loads(sanitized)
+        except json.JSONDecodeError:
+            raise original_exc
+
+        if not isinstance(parsed, dict):
+            raise original_exc
+
+        return parsed
 
 
 def _normalise_repair_output(parsed: dict[str, Any], raw_output: str) -> SemanticRepairResult:
@@ -273,7 +395,7 @@ def repair_semantic_sql(
         )
 
     try:
-        parsed = parse_verifier_json(raw_output)
+        parsed = _parse_repair_json(raw_output)
     except Exception as exc:
         return SemanticRepairResult(
             status="failed",
@@ -315,7 +437,7 @@ def repair_non_executable_sql(
         )
 
     try:
-        parsed = parse_verifier_json(raw_output)
+        parsed = _parse_repair_json(raw_output)
     except Exception as exc:
         return SemanticRepairResult(
             status="failed",
