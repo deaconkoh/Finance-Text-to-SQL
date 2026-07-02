@@ -50,6 +50,7 @@ VALID_MISMATCH_TYPES = {
     "financial_object_error",
     "financial_measure_error",
     "computation_logic_error",
+    "non_executable_error",
 }
 
 VALID_CONFIDENCE_LEVELS = {
@@ -147,6 +148,70 @@ def detect_profile_status(execution_profile: str) -> str | None:
         pass
 
     return None
+
+
+def build_execution_error_profile(
+    generated_sql: str,
+    execution_error: str | None,
+    error_source: str | None = None,
+) -> str:
+    """Build a deterministic verifier-facing profile for non-executable SQL."""
+    return json.dumps(
+        {
+            "status": "EXECUTION_ERROR",
+            "profile_type": "execution_error",
+            "generated_sql": generated_sql,
+            "execution_error": execution_error or "unknown",
+            "error_source": error_source,
+            "warnings": [
+                "Generated SQL failed execution before semantic verification."
+            ],
+        },
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    )
+
+
+def build_non_executable_verification_result(
+    execution_error: str | None,
+) -> VerificationResult:
+    """Return a deterministic rejection for SQL that cannot execute."""
+    evidence = f"Generated SQL execution error: {execution_error or 'unknown'}"
+    return VerificationResult(
+        answers_question=False,
+        mismatch_type="non_executable_error",
+        mismatch_detail=(
+            "Generated SQL could not execute, so semantic equivalence cannot "
+            "be evaluated until the execution error is fixed."
+        ),
+        repair_hint=(
+            "Fix only the SQL execution error while preserving the original "
+            "query intent; semantic correctness will be verified after the SQL "
+            "executes."
+        ),
+        ambiguous=False,
+        should_abstain=False,
+        abstain_reason=None,
+        confidence="high",
+        raw_output=None,
+        invalid_mismatch_type=None,
+        error=None,
+        stage2_answers_question=False,
+        stage2_ambiguous=False,
+        stage3_ran=False,
+        stage2_evidence_match="insufficient",
+        stage2_primary_mismatch_type="non_executable_error",
+        stage2_mismatch_detail="Generated SQL failed execution.",
+        stage2_failed_evidence=[evidence],
+        stage2_diagnostic_dimensions={
+            "financial_object": "weak",
+            "financial_measure": "weak",
+            "computation_logic": "weak",
+        },
+        probes_used=0,
+        probe_trajectory=[],
+    )
 
 
 def build_stage2_verification_prompt(

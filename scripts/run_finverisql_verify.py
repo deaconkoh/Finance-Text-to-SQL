@@ -117,7 +117,11 @@ try:
     from src.finverisql.sql_parser import parse_sql
     from src.finverisql.sql_semantic_mapping import build_sql_financial_semantics
     from src.finverisql.compact_semantic_profile import build_verifier_payload
-    from src.finverisql.verifier import verify_decompiled_sql
+    from src.finverisql.verifier import (
+        build_execution_error_profile,
+        build_non_executable_verification_result,
+        verify_decompiled_sql,
+    )
     from src.utils.inference_utils import build_verifier_generate_fn
 
 except ModuleNotFoundError:
@@ -126,7 +130,11 @@ except ModuleNotFoundError:
     from finverisql.sql_parser import parse_sql
     from finverisql.sql_semantic_mapping import build_sql_financial_semantics
     from finverisql.compact_semantic_profile import build_verifier_payload
-    from finverisql.verifier import verify_decompiled_sql
+    from finverisql.verifier import (
+        build_execution_error_profile,
+        build_non_executable_verification_result,
+        verify_decompiled_sql,
+    )
     from utils.inference_utils import build_verifier_generate_fn
 
 
@@ -633,6 +641,19 @@ def make_output_row(
     }
 
 
+def extract_execution_error(row: dict[str, Any]) -> tuple[str | None, str | None]:
+    for key in ("generated_error", "error_message", "error"):
+        value = row.get(key)
+        if value:
+            return str(value), key
+
+    status = row.get("generated_execution_status")
+    if status and str(status).lower() != "success":
+        return str(status), "generated_execution_status"
+
+    return None, None
+
+
 def derive_group_output_path(output_path: str | Path, suffix: str) -> Path:
     path = Path(output_path)
     return path.with_name(f"{path.stem}_{suffix}{path.suffix}")
@@ -724,6 +745,150 @@ def append_routed_rows(
         appended += 1
 
     return appended, skipped
+
+
+def run_execution_error_rows(
+    rows: list[dict[str, Any]],
+    output_path: Path,
+    args: argparse.Namespace,
+) -> int:
+    completed_keys = load_completed_keys(output_path)
+    pending_rows: list[dict[str, Any]] = []
+
+    for row in rows:
+        run_key = get_run_key(
+            row=row,
+            verifier_model=args.model_name,
+            question_key=args.question_key,
+            sql_key=args.sql_key,
+            profile_mode=args.profile_mode,
+            probing_mode=args.probing_mode,
+            intent_mode=args.intent_mode,
+            max_probes=args.max_probes,
+        )
+
+        if not args.overwrite and run_key in completed_keys:
+            continue
+
+        pending_rows.append(row)
+
+    print(f"Rows selected for Group C execution-error verification: {len(rows)}")
+    print(f"Already completed in verification output: {len(rows) - len(pending_rows)}")
+    print(f"Pending Group C verification rows: {len(pending_rows)}")
+
+    if not pending_rows:
+        return 0
+
+    schema_store = None
+    if args.intent_mode == "metadata_guided":
+        schema_store = SchemaAnnotationStore.from_json(args.schema_path)
+
+    intent_cache = load_intent_cache(args.intent_cache_path, args.intent_mode)
+    llm_generate_fn = None
+    decomposer = None
+
+    if not args.intent_cache_path or not args.require_intent_cache:
+        llm_generate_fn = build_verifier_generate_fn(
+            model_name=args.model_name,
+            backend=args.backend,
+            temperature=args.temperature,
+            num_predict=args.num_predict,
+            timeout=args.timeout,
+        )
+        decomposer = IntentDecomposer(
+            llm_call=llm_generate_fn,
+            intent_mode=args.intent_mode,
+            schema_store=schema_store,
+        )
+
+    for row in tqdm(pending_rows):
+        try:
+            question = get_question(row, args.question_key)
+            generated_sql = get_generated_sql(row, args.sql_key)
+            execution_error, error_source = extract_execution_error(row)
+            intent_representation = get_cached_intent(
+                intent_cache=intent_cache,
+                row=row,
+                question_key=args.question_key,
+            )
+
+            if intent_representation is None:
+                if args.require_intent_cache or decomposer is None:
+                    raise KeyError(
+                        "No cached intent found for "
+                        f"question_id={get_question_id(row, args.question_key)!r}. "
+                        "Run scripts/precompute_finverisql_intents.py first or "
+                        "omit --require-intent-cache."
+                    )
+
+                intent_representation = decomposer.decompose(question)
+
+            execution_profile = build_execution_error_profile(
+                generated_sql=generated_sql,
+                execution_error=execution_error,
+                error_source=error_source,
+            )
+            verification = build_non_executable_verification_result(execution_error)
+            output_row = make_output_row(
+                source_row=row,
+                question=question,
+                generated_sql=generated_sql,
+                intent_representation=intent_representation,
+                execution_profile=execution_profile,
+                verification_result=verification.to_dict(),
+                verifier_model=args.model_name,
+                profile_format=args.profile_mode,
+                intent_mode=args.intent_mode,
+                probing_mode=args.probing_mode,
+                max_probes=args.max_probes,
+            )
+            output_row["status"] = "success"
+            output_row["error"] = None
+            output_row["pipeline_route"] = "non_executable_verification"
+
+        except Exception as exc:
+            output_row = {
+                "question_id": row.get("question_id") or row.get("id"),
+                "db_id": row.get("db_id"),
+                "split": row.get("split"),
+                "level": row.get("level"),
+                "generator": row.get("generator") or row.get("model") or row.get("model_key"),
+                "prompt_setting": row.get("prompt_setting"),
+                "evaluation_group": get_evaluation_group(row),
+                "question": row.get(args.question_key),
+                "gold_sql": row.get("gold_sql"),
+                "generated_sql": row.get(args.sql_key),
+                "generated_sql_hash": stable_sql_hash(row.get(args.sql_key)),
+                "intent_representation": None,
+                "execution_profile": None,
+                "profile_status": None,
+                "verifier_model": args.model_name,
+                "verification": None,
+                "profile_format": args.profile_mode,
+                "intent_mode": args.intent_mode,
+                "probing_mode": args.probing_mode,
+                "max_probes": args.max_probes,
+                "status": "failed",
+                "error": str(exc),
+                "pipeline_route": "non_executable_verification",
+            }
+
+        append_jsonl(output_path, output_row)
+        completed_keys.add(
+            get_run_key(
+                row=row,
+                verifier_model=args.model_name,
+                question_key=args.question_key,
+                sql_key=args.sql_key,
+                profile_mode=args.profile_mode,
+                probing_mode=args.probing_mode,
+                intent_mode=args.intent_mode,
+                max_probes=args.max_probes,
+            )
+        )
+
+    print(f"Saved Group C verification outputs to: {output_path}")
+    return len(pending_rows)
 
 
 def run_verification_rows(
@@ -975,6 +1140,11 @@ def run_verification(args: argparse.Namespace) -> None:
         output_path=output_path,
         args=args,
     )
+    group_c_verified_count = run_execution_error_rows(
+        rows=repair_rows,
+        output_path=output_path,
+        args=args,
+    )
 
     repair_appended, repair_skipped = append_routed_rows(
         rows=repair_rows,
@@ -1010,6 +1180,7 @@ def run_verification(args: argparse.Namespace) -> None:
     print(
         "Pipeline summary: "
         f"verified={verified_count}, "
+        f"group_c_verified={group_c_verified_count}, "
         f"repair_queued={repair_appended}, "
         f"excluded_logged={skipped_appended}"
     )
@@ -1030,7 +1201,7 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help=(
             "Output JSONL path for FinVeriSQL verification results. "
-            "Only A/B rows are written here."
+            "A/B rows and deterministic Group C execution-error rows are written here."
         ),
     )
     parser.add_argument(

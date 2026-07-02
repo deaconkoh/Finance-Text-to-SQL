@@ -71,6 +71,7 @@ for import_root in (PROJECT_ROOT, SRC_ROOT):
 try:
     from src.utils.data_utils import BOOKSQL_DATASET_NAME, load_booksql_records
     from src.utils.inference_utils import (
+        build_ollama_generate_fn,
         build_few_shot_prompt,
         build_zero_shot_prompt,
         extract_sql,
@@ -79,6 +80,7 @@ try:
 except ModuleNotFoundError:
     from utils.data_utils import BOOKSQL_DATASET_NAME, load_booksql_records
     from utils.inference_utils import (
+        build_ollama_generate_fn,
         build_few_shot_prompt,
         build_zero_shot_prompt,
         extract_sql,
@@ -87,6 +89,8 @@ except ModuleNotFoundError:
 
 
 QWEN_MODEL_NAME = "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit"
+QWEN_DEFAULT_BACKEND = "mlx-lm"
+QWEN_DEFAULT_OLLAMA_MODEL_NAME = "qwen2.5-coder:7b"
 QWEN_GENERATOR = "qwen"
 
 ARCTIC_GENERATOR = "arctic"
@@ -360,6 +364,35 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_MAX_NEW_TOKENS,
     )
     parser.add_argument(
+        "--backend",
+        default=QWEN_DEFAULT_BACKEND,
+        choices=["mlx-lm", "ollama"],
+        help=(
+            "Inference backend for --model qwen. Defaults to MLX-LM for "
+            "existing macOS runs; use ollama on Linux/CUDA servers."
+        ),
+    )
+    parser.add_argument(
+        "--ollama-model-name",
+        default=QWEN_DEFAULT_OLLAMA_MODEL_NAME,
+        help=(
+            "Ollama model name for --model qwen --backend ollama. "
+            "Use a Qwen Coder instruct model available on the server."
+        ),
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature for Ollama-backed Qwen baseline generation.",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="Ollama HTTP timeout in seconds for Qwen baseline generation.",
+    )
+    parser.add_argument(
         "--model-path",
         default=None,
         help="Optional local path to Arctic GGUF model file.",
@@ -470,18 +503,44 @@ def resolve_arctic_model_path(args: argparse.Namespace) -> str:
 def build_qwen_runner(
     args: argparse.Namespace,
 ) -> tuple[str, Callable[[str], str], dict[str, Any]]:
-    """Load Qwen through MLX and return a baseline generation runner.
+    """Build a Qwen baseline generation runner for the requested backend.
 
     Args:
-        args: Parsed CLI arguments, including `max_new_tokens`.
+        args: Parsed CLI arguments, including backend and generation settings.
 
     Returns:
         Tuple of generator key, generation callable, and model metadata.
 
     Assumption:
-        The local environment has `mlx_lm` installed and can load the configured
-        4-bit Qwen model.
+        The default MLX-LM backend is used for local macOS runs. Linux/CUDA
+        runs should pass `--backend ollama` with an installed Ollama model.
     """
+    if args.backend == "ollama":
+        print("Using Qwen baseline through Ollama...")
+        print(f"Ollama model: {args.ollama_model_name}")
+
+        generate_fn = build_ollama_generate_fn(
+            model_name=args.ollama_model_name,
+            temperature=args.temperature,
+            num_predict=args.max_new_tokens,
+            timeout=args.timeout,
+            format_json=False,
+        )
+
+        return QWEN_GENERATOR, generate_fn, {
+            "model_name": args.ollama_model_name,
+            "inference_backend": "ollama",
+            "max_new_tokens": args.max_new_tokens,
+            "temperature": args.temperature,
+            "timeout": args.timeout,
+        }
+
+    if args.backend != "mlx-lm":
+        raise ValueError(
+            f"Unsupported Qwen backend: {args.backend}. "
+            "Expected one of: mlx-lm, ollama."
+        )
+
     from mlx_lm import load
 
     try:

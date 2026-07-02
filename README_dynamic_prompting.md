@@ -745,11 +745,12 @@ The main comparison table is evaluated on the test set.
 
 Recommended main comparison table:
 
-| System                           | EX Accuracy | ASA Metrics | Correction Rate | Corruption Rate | Net Repair Gain |
-| -------------------------------- | ----------- | ----------- | --------------- | --------------- | --------------- |
-| Generator only                   | ...         | –           | –               | –               | –               |
-| Generator \+ generic self-refine | ...         | ...         | ...             | ...             | ...             |
-| Generator \+ FinVeriSQL full     | ...         | ...         | ...             | ...             | ...             |
+| System                                       | EX Accuracy | ASA Metrics | Correction Rate | Corruption Rate | Net Repair Gain |
+| -------------------------------------------- | ----------- | ----------- | --------------- | --------------- | --------------- |
+| Generator only                               | ...         | ...         | –               | –               | –               |
+| Generator \+ generic self-refine             | ...         | ...         | ...             | ...             | ...             |
+| Generator \+ generic execution-guided refine | ...         | ...         | ...             | ...             | ...             |
+| Generator \+ FinVeriSQL full                 | ...         | ...         | ...             | ...             | ...             |
 
 For the main comparison table:
 
@@ -769,28 +770,38 @@ These diagnostics explain whether FinVeriSQL is reducing deterministic hard fina
 
 The internal ablation table is evaluated on the evaluation/dev set. Each ablation changes one component of FinVeriSQL while keeping the rest of the pipeline as close as possible to the full system.
 
-| System / Ablation                | Purpose                                                                                                                                                                                                                                                |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **FinVeriSQL full**              | Complete proposed system using the selected best configuration. This is the reference point for all internal ablations.                                                                                                                                |
-| **w/o Intent Decomposer**        | Removes explicit decomposition of the natural language question into a structured intent representation. Tests whether structured intent helps the verifier identify meaningful SQL mismatches.                                                        |
-| **Metadata-guided vs NL-only**   | Compares metadata-guided intent construction against natural-language-only intent construction while keeping the rest of the verifier fixed. Tests whether business glossary or schema metadata improves verification, or whether it introduces noise. |
-| **w/o Probing / direct only**    | Removes targeted probing and relies only on direct verifier comparison. Tests whether probing helps resolve ambiguous verifier decisions enough to justify its added complexity.                                                                       |
-| **w/o Compact Semantic Profile** | Removes the compact schema-grounded semantic profile and uses a less semantically grounded SQL representation. Tests whether compact financial profiling improves verifier precision and downstream repair.                                            |
-| **w/o Error Classes in Repair**  | Removes the structured mismatch/error class from the repair prompt while keeping the rest of the repair evidence. Tests whether finance-aware error labels help the repairer make more targeted edits.                                                 |
+| System / Ablation                   | Purpose                                                                                                                                                                                                                |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **FinVeriSQL full**                 | Complete proposed system using the selected best configuration. This is the reference point for all internal ablations.                                                                                                |
+| **w/o Intent Decomposer**           | Removes explicit decomposition of the natural language question into a structured intent representation. Tests whether structured intent helps the verifier identify meaningful SQL mismatches.                        |
+| **w/o Probing / direct only**       | Removes targeted probing and relies only on direct verifier comparison. Tests whether probing helps resolve ambiguous verifier decisions enough to justify its added complexity.                                       |
+| **w/o Compact Semantic Profile**    | Removes the compact schema-grounded semantic profile and uses a less semantically grounded SQL representation. Tests whether compact financial profiling improves verifier precision and downstream repair.            |
+| **w/o Scope Constraints in Repair** | Keeps dimension-specific repair routing but removes deterministic clause-level scope validation. Tests whether enforcing allowed and disallowed clause changes reduces off-target edits and repair-induced corruption. |
+| **w/o re-verification loop**        | Applies a single repair without iterative verifier re-checking. Tests whether post-repair verification is needed to confirm successful fixes, catch persistent mismatches, and avoid accepting unresolved repairs.     |
 
 Recommended internal ablation table:
 
-| System / Ablation            | Detection Precision | Detection Recall | Detection F1 | Correction Rate | Corruption Rate | EX Accuracy | ΔEX vs Full |
-| ---------------------------- | ------------------- | ---------------- | ------------ | --------------- | --------------- | ----------- | ----------- |
-| FinVeriSQL full              | ...                 | ...              | ...          | ...             | ...             | ...         | 0.00        |
-| w/o Intent Decomposer        | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
-| Metadata-guided              | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
-| NL-only                      | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
-| w/o Probing / direct only    | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
-| w/o Compact Semantic Profile | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
-| w/o Error Classes in Repair  | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
+| System / Ablation               | Detection Precision | Detection Recall | Detection F1 | Correction Rate | Corruption Rate | EX Accuracy | ΔEX vs Full |
+| ------------------------------- | ------------------- | ---------------- | ------------ | --------------- | --------------- | ----------- | ----------- |
+| FinVeriSQL full                 | ...                 | ...              | ...          | ...             | ...             | ...         | 0.00        |
+| w/o Intent Decomposer           | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
+| w/o Probing / direct only       | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
+| w/o Compact Semantic Profile    | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
+| w/o Scope Constraints in Repair | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
+| w/o re-verification loop        | ...                 | ...              | ...          | ...             | ...             | ...         | ...         |
 
 For the internal ablation table:
+
+Detection metrics treat executable-wrong SQL as the positive class:
+
+- **TP**: Group B query where the verifier returns `answers_question = false`.
+- **FP**: Group A query where the verifier returns `answers_question = false`.
+- **FN**: Group B query where the verifier does not return `answers_question = false`, including `answers_question = true`, `answers_question = null`, or abstention.
+- **Detection Precision** = TP / (TP + FP).
+- **Detection Recall** = TP / (TP + FN).
+- **Detection F1** = 2 _ Precision _ Recall / (Precision + Recall).
+
+Group-specific accept/reject precision, recall, and F1 should be reported only as verifier diagnostics, not as the main internal ablation metrics.
 
 ΔEX vs Full \= EX(ablation) \- EX(FinVeriSQL full)
 

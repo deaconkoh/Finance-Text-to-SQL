@@ -239,11 +239,17 @@ def mode_stats(mode_rows: list[DiagnosticRow]) -> dict[str, float | int | str]:
 
     accept_precision_count = sum(row.group == "A_correct_executable" for row in predicted_accept)
     reject_precision_count = sum(row.group == "B_wrong_executable" for row in predicted_reject)
+    detection_tp = true_rejects
+    detection_fp = sum(row.answers_question is False for row in group_a)
+    detection_fn = sum(row.answers_question is not False for row in group_b)
+    detection_tn = true_accepts
 
     accept_precision = safe_divide(accept_precision_count, len(predicted_accept))
     accept_recall = safe_divide(true_accepts, len(group_a))
     reject_precision = safe_divide(reject_precision_count, len(predicted_reject))
     reject_recall = safe_divide(true_rejects, len(group_b))
+    detection_precision = safe_divide(detection_tp, detection_tp + detection_fp)
+    detection_recall = safe_divide(detection_tp, detection_tp + detection_fn)
 
     return {
         "n": len(mode_rows),
@@ -263,21 +269,19 @@ def mode_stats(mode_rows: list[DiagnosticRow]) -> dict[str, float | int | str]:
         "reject_recall": reject_recall,
         "accept_f1": f1_score(accept_precision, accept_recall),
         "reject_f1": f1_score(reject_precision, reject_recall),
-        "macro_f1": None,
+        "detection_tp": detection_tp,
+        "detection_fp": detection_fp,
+        "detection_fn": detection_fn,
+        "detection_tn": detection_tn,
+        "detection_precision": detection_precision,
+        "detection_recall": detection_recall,
+        "detection_f1": f1_score(detection_precision, detection_recall),
         "ambiguous_a": sum(row.ambiguous for row in group_a),
         "ambiguous_b": sum(row.ambiguous for row in group_b),
         "abstentions_a": sum(row.abstained for row in group_a),
         "abstentions_b": sum(row.abstained for row in group_b),
         "avg_probes": sum(row.probes_used for row in mode_rows) / len(mode_rows),
     }
-
-
-def add_macro_f1(stats: dict[str, float | int | str | None]) -> dict[str, float | int | str | None]:
-    accept_f1 = stats["accept_f1"]
-    reject_f1 = stats["reject_f1"]
-    if isinstance(accept_f1, float) and isinstance(reject_f1, float):
-        stats["macro_f1"] = (accept_f1 + reject_f1) / 2
-    return stats
 
 
 def metric_table(rows: list[DiagnosticRow]) -> str:
@@ -287,7 +291,7 @@ def metric_table(rows: list[DiagnosticRow]) -> str:
 
     ordered_modes = mode_order(by_mode)
     stats_by_mode = {
-        mode: add_macro_f1(mode_stats(mode_rows))
+        mode: mode_stats(mode_rows)
         for mode, mode_rows in by_mode.items()
     }
     direct_stats = stats_by_mode.get("direct")
@@ -295,8 +299,8 @@ def metric_table(rows: list[DiagnosticRow]) -> str:
     direct_avg_probes = float(direct_stats["avg_probes"]) if direct_stats else None
 
     lines = [
-        "| Mode | N | Label Mix | Accuracy | Macro F1 | Accept Precision | Accept Recall (Group A) | Accept F1 | Reject Precision | Reject Recall (Group B) | Reject F1 | Avg Probes / Query | Probe Gain / Cost |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Mode | N | Label Mix | Accuracy | Detection Precision | Detection Recall | Detection F1 | Accept Precision | Accept Recall (Group A) | Accept F1 | Reject Precision | Reject Recall (Group B) | Reject F1 | Avg Probes / Query | Probe Gain / Cost |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
 
     for mode in ordered_modes:
@@ -324,7 +328,9 @@ def metric_table(rows: list[DiagnosticRow]) -> str:
             )
 
         lines.append(
-            "| {mode} | {n} | A={group_a_n}, B={group_b_n} | {correct}/{n} ({accuracy}) | {macro_f1} | "
+            "| {mode} | {n} | A={group_a_n}, B={group_b_n} | {correct}/{n} ({accuracy}) | "
+            "{detection_tp}/{detection_predicted_positive} ({detection_precision}) | "
+            "{detection_tp}/{detection_actual_positive} ({detection_recall}) | {detection_f1} | "
             "{accept_precision_count}/{predicted_accept_n} ({accept_precision}) | "
             "{true_accepts}/{group_a_n} ({accept_recall}) | {accept_f1} | "
             "{reject_precision_count}/{predicted_reject_n} ({reject_precision}) | "
@@ -336,7 +342,16 @@ def metric_table(rows: list[DiagnosticRow]) -> str:
                 group_b_n=group_b_n,
                 correct=int(stats["correct"]),
                 accuracy=percent(int(stats["correct"]), n),
-                macro_f1=percent_from_float(stats["macro_f1"]),
+                detection_tp=int(stats["detection_tp"]),
+                detection_predicted_positive=(
+                    int(stats["detection_tp"]) + int(stats["detection_fp"])
+                ),
+                detection_actual_positive=(
+                    int(stats["detection_tp"]) + int(stats["detection_fn"])
+                ),
+                detection_precision=percent_from_float(stats["detection_precision"]),
+                detection_recall=percent_from_float(stats["detection_recall"]),
+                detection_f1=percent_from_float(stats["detection_f1"]),
                 accept_precision_count=accept_precision_count,
                 predicted_accept_n=predicted_accept_n,
                 accept_precision=percent(accept_precision_count, predicted_accept_n),

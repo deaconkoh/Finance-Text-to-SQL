@@ -239,7 +239,16 @@ def adapt_repair_rows(
             or row.get("pred_sql")
         )
         final_sql = repaired_sql or original_sql
-        final_sql_source = "repaired_sql" if repaired_sql else "original_generated_sql"
+        source_final_sql_source = text_or_none(row.get("final_sql_source"))
+        if repaired_sql:
+            final_sql_source = (
+                source_final_sql_source
+                if source_final_sql_source
+                and source_final_sql_source not in {"original_generated_sql", "missing"}
+                else "repaired_sql"
+            )
+        else:
+            final_sql_source = "original_generated_sql"
 
         adapted = {
             **row,
@@ -383,7 +392,9 @@ def build_repair_summary(
             if final_group == GROUP_A:
                 applied_wrong_to_correct += 1
 
-    repaired_rows = source_counts.get("repaired_sql", 0)
+    repaired_rows = sum(
+        1 for row in adapted_rows if row.get("final_sql_repaired") is True
+    )
     original_metric_total = (
         original_group_counts.get(GROUP_A, 0)
         + original_group_counts.get(GROUP_B, 0)
@@ -401,6 +412,11 @@ def build_repair_summary(
     final_execution_accuracy = safe_rate(
         final_group_counts.get(GROUP_A, 0),
         final_metric_total,
+    )
+    net_gain_after_corruption_count = wrong_to_correct - corrupted_correct
+    net_gain_after_corruption = safe_rate(
+        net_gain_after_corruption_count,
+        original_metric_total,
     )
 
     return {
@@ -482,7 +498,9 @@ def build_repair_summary(
             "corruption_rate": safe_rate(corrupted_correct, original_correct_repaired),
             "overall_corruption_rate": safe_rate(corrupted_correct, originally_correct),
             "preservation_rate": safe_rate(preserved_correct, originally_correct),
-            "net_gain_after_corruption": wrong_to_correct - corrupted_correct,
+            "net_gain_after_corruption_count": net_gain_after_corruption_count,
+            "net_gain_after_corruption": net_gain_after_corruption,
+            "net_gain_after_corruption_denominator": original_metric_total,
         },
         "probe_summary": {
             "probed_rows": probed_rows,
@@ -534,6 +552,7 @@ def build_repair_summary(
             ),
             "corruption_rate": safe_rate(corrupted_correct, original_correct_repaired),
             "overall_corruption_rate": safe_rate(corrupted_correct, originally_correct),
+            "net_gain_after_corruption": net_gain_after_corruption,
         },
         "repaired_sql_rows": repaired_rows,
         "fallback_original_sql_rows": source_counts.get("original_generated_sql", 0),
@@ -641,7 +660,8 @@ def write_metrics_markdown(path: Path, metrics: dict[str, Any]) -> None:
         f"| Preserved originally correct rows | {format_count_rate(safety['preserved_originally_correct_rows'], safety['originally_correct_rows'])} |",
         f"| Corrupted originally correct touched rows | {format_count_rate(safety['corrupted_originally_correct_rows'], safety['original_correct_repaired_rows'])} |",
         f"| Overall corruption among originally correct | {format_count_rate(safety['corrupted_originally_correct_rows'], safety['originally_correct_rows'])} |",
-        f"| Net gain after corruption | {safety['net_gain_after_corruption']} |",
+        f"| Net gain after corruption | {format_rate(safety['net_gain_after_corruption'])} |",
+        f"| Net gain after corruption count | {safety['net_gain_after_corruption_count']}/{safety['net_gain_after_corruption_denominator']} |",
         "",
         "## Readout",
         "",

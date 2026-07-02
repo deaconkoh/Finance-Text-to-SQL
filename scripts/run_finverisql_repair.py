@@ -21,7 +21,11 @@ for import_root in (PROJECT_ROOT, SRC_ROOT):
 
 try:
     from src.finverisql.intent_decomposer import IntentDecomposer
-    from src.finverisql.repair import repair_non_executable_sql, repair_semantic_sql
+    from src.finverisql.repair import (
+        SemanticRepairResult,
+        repair_non_executable_sql,
+        repair_semantic_sql,
+    )
     from src.finverisql.repair_runner import (
         append_jsonl,
         build_attempt_output_row,
@@ -31,6 +35,10 @@ try:
         get_repair_run_key,
         load_completed_keys,
         read_jsonl,
+        run_generic_semantic_repair_chain,
+        run_non_executable_then_semantic_repair_chain,
+        run_specialized_first_repair_no_reverification,
+        run_specialized_semantic_repair_chain,
         stable_context_hash,
     )
     from src.finverisql.schema_loader import SchemaAnnotationStore
@@ -38,7 +46,11 @@ try:
     from src.utils.inference_utils import build_verifier_generate_fn
 except ModuleNotFoundError:
     from finverisql.intent_decomposer import IntentDecomposer
-    from finverisql.repair import repair_non_executable_sql, repair_semantic_sql
+    from finverisql.repair import (
+        SemanticRepairResult,
+        repair_non_executable_sql,
+        repair_semantic_sql,
+    )
     from finverisql.repair_runner import (
         append_jsonl,
         build_attempt_output_row,
@@ -48,6 +60,10 @@ except ModuleNotFoundError:
         get_repair_run_key,
         load_completed_keys,
         read_jsonl,
+        run_generic_semantic_repair_chain,
+        run_non_executable_then_semantic_repair_chain,
+        run_specialized_first_repair_no_reverification,
+        run_specialized_semantic_repair_chain,
         stable_context_hash,
     )
     from finverisql.schema_loader import SchemaAnnotationStore
@@ -59,6 +75,8 @@ DEFAULT_SCHEMA_PATH = "data/booksql/schema_annotations.json"
 DEFAULT_MODEL_NAME = "mlx-community/Llama-3.1-8B-Instruct-4bit"
 DEFAULT_BACKEND = "mlx-lm"
 REPAIR_CONTEXT_VERSION = "schema_sqlite_v1"
+CHAIN_REPAIR_FRAMEWORKS = {"specialized_chain", "generic_chain"}
+SCHEMA_ANNOTATION_FRAMEWORKS = {"specialized_chain", "generic_chain", "no_reverification"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -70,6 +88,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--schema-path", default=DEFAULT_SCHEMA_PATH, help="Schema annotation JSON path for metadata-guided intent, or schema text path for Group C repair prompts.")
     parser.add_argument("--repair-model-name", default=DEFAULT_MODEL_NAME, help="Model used to generate repaired SQL.")
     parser.add_argument("--repair-backend", choices=["ollama", "mlx-lm", "mlx-vlm"], default=DEFAULT_BACKEND)
+    parser.add_argument("--semantic-repair-framework", choices=["single", "specialized_chain", "generic_chain", "no_reverification"], default="single", help="Semantic repair framework for verifier-rejected executable rows.")
+    parser.add_argument("--verifier-model-name", default=DEFAULT_MODEL_NAME, help="Model used to re-verify chain repairs.")
+    parser.add_argument("--verifier-backend", choices=["ollama", "mlx-lm", "mlx-vlm"], default=DEFAULT_BACKEND)
+    parser.add_argument("--profile-mode", choices=["ast", "semantic", "compact"], default="compact", help="Execution profile mode for chain re-verification.")
+    parser.add_argument("--probing-mode", choices=["none", "probe", "hybrid"], default="probe", help="Verifier probing mode for chain re-verification.")
+    parser.add_argument("--max-probes", type=int, default=7, help="Maximum verifier probes for chain re-verification.")
     parser.add_argument("--intent-mode", choices=["none", "nl_only", "metadata_guided"], default="nl_only", help="Intent decomposition mode used when the input row does not already contain intent_representation.")
     parser.add_argument("--intent-cache-path", default=None, help="Optional precomputed intent JSONL cache.")
     parser.add_argument("--require-intent-cache", action="store_true", help="Fail rows that need intent decomposition unless they exist in --intent-cache-path.")
@@ -167,6 +191,12 @@ def main() -> None:
             "schema_text": schema_text,
             "intent_mode": args.intent_mode,
             "repair_context_version": REPAIR_CONTEXT_VERSION,
+            "semantic_repair_framework": args.semantic_repair_framework,
+            "verifier_model_name": args.verifier_model_name if args.semantic_repair_framework in CHAIN_REPAIR_FRAMEWORKS else None,
+            "verifier_backend": args.verifier_backend if args.semantic_repair_framework in CHAIN_REPAIR_FRAMEWORKS else None,
+            "profile_mode": args.profile_mode if args.semantic_repair_framework in CHAIN_REPAIR_FRAMEWORKS else None,
+            "probing_mode": args.probing_mode if args.semantic_repair_framework in CHAIN_REPAIR_FRAMEWORKS else None,
+            "max_probes": args.max_probes if args.semantic_repair_framework in CHAIN_REPAIR_FRAMEWORKS else None,
         }
     )
 
@@ -175,9 +205,15 @@ def main() -> None:
 
     for row in rows:
         is_candidate, repair_mode, _ = classify_candidate_row(row)
+        run_repair_mode = (
+            args.semantic_repair_framework
+            if args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS
+            and repair_mode == "semantic"
+            else repair_mode
+        )
         run_key = get_repair_run_key(
             row=row,
-            repair_mode=repair_mode or "unknown",
+            repair_mode=run_repair_mode or "unknown",
             repair_model=args.repair_model_name,
             intent_mode=args.intent_mode,
             repair_context_hash=repair_context_hash,
@@ -191,17 +227,17 @@ def main() -> None:
     print(f"Input rows selected: {len(rows)}")
     print(f"Pending repair rows: {len(pending_rows)}")
     print(f"Repair model: {args.repair_model_name} ({args.repair_backend})")
+    print(f"Semantic repair framework: {args.semantic_repair_framework}")
     print(f"Intent mode for missing intents: {args.intent_mode}")
 
     if not pending_rows:
         print("Nothing left to repair.")
         return
 
-    schema_store = (
-        SchemaAnnotationStore.from_json(args.schema_path)
-        if args.intent_mode == "metadata_guided"
-        else None
-    )
+    schema_store = None
+    if args.intent_mode == "metadata_guided" or args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS:
+        if Path(args.schema_path).suffix.lower() == ".json":
+            schema_store = SchemaAnnotationStore.from_json(args.schema_path)
     repair_generate_fn = build_verifier_generate_fn(
         model_name=args.repair_model_name,
         backend=args.repair_backend,
@@ -209,6 +245,15 @@ def main() -> None:
         num_predict=args.num_predict,
         timeout=args.timeout,
     )
+    verifier_generate_fn = None
+    if args.semantic_repair_framework in CHAIN_REPAIR_FRAMEWORKS:
+        verifier_generate_fn = build_verifier_generate_fn(
+            model_name=args.verifier_model_name,
+            backend=args.verifier_backend,
+            temperature=args.temperature,
+            num_predict=args.num_predict,
+            timeout=args.timeout,
+        )
 
     intent_cache = load_intent_cache(args.intent_cache_path, args.intent_mode)
     decomposer = None
@@ -263,7 +308,10 @@ def main() -> None:
         repair_request = None
         repair_result = None
 
-        if intent_representation is None:
+        if intent_representation is None and (
+            repair_mode != "non_executable"
+            or args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS
+        ):
             if args.require_intent_cache or decomposer is None:
                 repair_result = None
             else:
@@ -271,6 +319,156 @@ def main() -> None:
                     intent_representation = decomposer.decompose(str(row.get("question") or ""))
                 except Exception:
                     intent_representation = None
+
+        if repair_mode == "non_executable" and args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS:
+            if schema_store is None:
+                chain_result = {
+                    "initial_repair_mode": "non_executable",
+                    "stop_reason": "reverification_failed_or_abstained",
+                    "final_repaired_sql": None,
+                    "final_sql_source": "original_generated_sql",
+                    "scope_check_status": None,
+                    "scope_check_error": f"{args.semantic_repair_framework} requires schema annotations",
+                    "num_repair_attempts": 0,
+                    "repair_attempt_sequence": [],
+                }
+            else:
+                chain_result = run_non_executable_then_semantic_repair_chain(
+                    row=row,
+                    schema_text=schema_text,
+                    schema_store=schema_store,
+                    repair_generate_fn=repair_generate_fn,
+                    verifier_generate_fn=verifier_generate_fn or (lambda _prompt: ""),
+                    intent_representation=intent_representation if isinstance(intent_representation, dict) else None,
+                    profile_mode=args.profile_mode,
+                    probing_mode=args.probing_mode,
+                    max_probes=args.max_probes,
+                    semantic_followup_framework=args.semantic_repair_framework,
+                    accept_execution_repair_without_reverification=args.semantic_repair_framework == "no_reverification",
+                )
+
+            repaired_sql = chain_result.get("final_repaired_sql")
+            repair_result = (
+                SemanticRepairResult(
+                    status="success",
+                    repaired_sql=str(repaired_sql),
+                    edit_summary="Execution-first non-executable repair chain final SQL.",
+                    confidence=None,
+                    raw_output=None,
+                    error=None,
+                )
+                if repaired_sql
+                else None
+            )
+            output_row = build_attempt_output_row(
+                source_row=row,
+                repair_request=None,
+                repair_result=repair_result,
+                intent_representation_used=intent_representation if isinstance(intent_representation, dict) else None,
+                repair_mode="non_executable",
+                status="success",
+                skip_reason=None,
+                repair_model=args.repair_model_name,
+                intent_mode=args.intent_mode,
+                repair_context_hash=repair_context_hash,
+            )
+            output_row.update(chain_result)
+            output_row["semantic_repair_framework"] = args.semantic_repair_framework
+            output_row["verifier_model"] = args.verifier_model_name
+            output_row["verifier_backend"] = args.verifier_backend
+            output_row["profile_mode"] = args.profile_mode
+            output_row["probing_mode"] = args.probing_mode
+            output_row["max_probes"] = args.max_probes
+            append_jsonl(args.output_path, output_row)
+
+            if repaired_sql:
+                counts["generated"] += 1
+
+            continue
+
+        if repair_mode == "semantic" and args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS:
+            if schema_store is None:
+                chain_result = {
+                    "stop_reason": "reverification_failed_or_abstained",
+                    "final_repaired_sql": None,
+                    "final_sql_source": "original_generated_sql",
+                    "scope_check_status": None,
+                    "scope_check_error": f"{args.semantic_repair_framework} requires schema annotations",
+                    "num_repair_attempts": 0,
+                    "repair_attempt_sequence": [],
+                }
+            else:
+                if args.semantic_repair_framework == "generic_chain":
+                    assert verifier_generate_fn is not None
+                    chain_result = run_generic_semantic_repair_chain(
+                        row=row,
+                        schema_text=schema_text,
+                        schema_store=schema_store,
+                        repair_generate_fn=repair_generate_fn,
+                        verifier_generate_fn=verifier_generate_fn,
+                        profile_mode=args.profile_mode,
+                        probing_mode=args.probing_mode,
+                        max_probes=args.max_probes,
+                    )
+                elif args.semantic_repair_framework == "no_reverification":
+                    chain_result = run_specialized_first_repair_no_reverification(
+                        row=row,
+                        schema_text=schema_text,
+                        schema_store=schema_store,
+                        repair_generate_fn=repair_generate_fn,
+                        profile_mode=args.profile_mode,
+                    )
+                else:
+                    assert verifier_generate_fn is not None
+                    chain_result = run_specialized_semantic_repair_chain(
+                        row=row,
+                        schema_text=schema_text,
+                        schema_store=schema_store,
+                        repair_generate_fn=repair_generate_fn,
+                        verifier_generate_fn=verifier_generate_fn,
+                        profile_mode=args.profile_mode,
+                        probing_mode=args.probing_mode,
+                        max_probes=args.max_probes,
+                    )
+
+            repaired_sql = chain_result.get("final_repaired_sql")
+            repair_result = (
+                SemanticRepairResult(
+                    status="success",
+                    repaired_sql=str(repaired_sql),
+                    edit_summary=f"{args.semantic_repair_framework} semantic repair chain final SQL.",
+                    confidence=None,
+                    raw_output=None,
+                    error=None,
+                )
+                if repaired_sql
+                else None
+            )
+            output_row = build_attempt_output_row(
+                source_row=row,
+                repair_request=None,
+                repair_result=repair_result,
+                intent_representation_used=intent_representation if isinstance(intent_representation, dict) else None,
+                repair_mode=args.semantic_repair_framework,
+                status="success",
+                skip_reason=None,
+                repair_model=args.repair_model_name,
+                intent_mode=args.intent_mode,
+                repair_context_hash=repair_context_hash,
+            )
+            output_row.update(chain_result)
+            output_row["semantic_repair_framework"] = args.semantic_repair_framework
+            output_row["verifier_model"] = args.verifier_model_name
+            output_row["verifier_backend"] = args.verifier_backend
+            output_row["profile_mode"] = args.profile_mode
+            output_row["probing_mode"] = args.probing_mode
+            output_row["max_probes"] = args.max_probes
+            append_jsonl(args.output_path, output_row)
+
+            if repaired_sql:
+                counts["generated"] += 1
+
+            continue
 
         if repair_mode == "semantic":
             repair_request = build_semantic_repair_request(

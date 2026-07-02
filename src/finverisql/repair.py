@@ -27,6 +27,11 @@ class SemanticRepairRequest:
     diagnostic_dimensions: dict[str, Any] | None
     confidence: str | None
     schema_text: str | None = None
+    repair_mode: str | None = None
+    current_sql: str | None = None
+    original_sql: str | None = None
+    allowed_clause_changes: list[str] | None = None
+    disallowed_clause_changes: list[str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -99,6 +104,9 @@ def _render_targeted_json(value: str | dict[str, Any]) -> str:
 
 
 def build_semantic_repair_prompt(request: SemanticRepairRequest) -> str:
+    if request.repair_mode:
+        return build_specialized_semantic_repair_prompt(request)
+
     intent_json = json.dumps(
         request.intent_representation,
         ensure_ascii=False,
@@ -185,14 +193,161 @@ Return only the JSON object.
 """.strip()
 
 
-def build_non_executable_repair_prompt(request: NonExecutableRepairRequest) -> str:
+def _render_clause_list(clauses: list[str] | None) -> str:
+    return ", ".join(clauses or [])
+
+
+def _build_specialized_semantic_repair_prompt(
+    request: SemanticRepairRequest,
+    mode_title: str,
+    mode_instruction: str,
+) -> str:
     intent_json = json.dumps(
-        request.intent_representation or {},
+        request.intent_representation,
         ensure_ascii=False,
         indent=2,
         sort_keys=True,
     )
+    evidence_json = json.dumps(
+        request.failed_evidence,
+        ensure_ascii=False,
+        indent=2,
+    )
+    execution_profile = _render_targeted_json(request.execution_profile)
+    schema_text = _normalise_optional_str(request.schema_text) or "Not provided."
+    current_sql = request.current_sql or request.generated_sql
+    allowed = _render_clause_list(request.allowed_clause_changes)
+    disallowed = _render_clause_list(request.disallowed_clause_changes)
 
+    return f"""
+You are repairing a finance-related SQL query using trusted verifier mismatch evidence.
+
+Repair mode:
+{request.repair_mode}
+
+Specialized task:
+{mode_title}
+{mode_instruction}
+
+Scope constraints:
+- Allowed clause changes: {allowed}
+- Disallowed clause changes: {disallowed}
+- Machine validation will reject repaired SQL that changes disallowed clauses.
+- Preserve every clause outside the allowed scope.
+
+Your job:
+- The repaired SQL must execute in SQLite.
+- Use only tables and columns present in the provided schema metadata.
+- Use SQLite-compatible date functions such as date(...) and strftime(...).
+- Do not use unsupported SQL syntax such as EXTRACT(...), DATE_TRUNC, INTERVAL,
+  ILIKE, BOOL_OR, BOOL_AND, or vendor-specific functions.
+- Trust the provided mismatch diagnosis. Do not re-verify or reinterpret the mismatch type.
+- Make the minimum semantic edits needed to fix the stated mismatch.
+- Return exactly one repaired SQL candidate.
+- Return a short edit summary describing only the semantic change you made.
+- Do not mention gold SQL, evaluation history, or alternate candidates.
+
+Return only valid JSON with exactly these fields:
+{{
+  "repaired_sql": "<single repaired SQL query>",
+  "edit_summary": "<short edit summary>",
+  "confidence": "high | medium | low"
+}}
+- `repaired_sql` must be a single JSON string. Escape any SQL newlines as `\\n`,
+  or return the SQL on one line.
+- Do not use Markdown fences.
+
+Question ID:
+{request.question_id}
+
+Question:
+{request.question}
+
+Current SQL:
+{current_sql}
+
+Structured intent:
+{intent_json}
+
+Current execution profile:
+{execution_profile}
+
+Schema metadata:
+{schema_text}
+
+Current verifier mismatch type:
+{request.primary_mismatch_type}
+
+Mismatch detail:
+{request.mismatch_detail or "null"}
+
+Failed evidence:
+{evidence_json}
+
+Repair hint:
+{request.repair_hint or "null"}
+
+Verifier confidence:
+{request.confidence or "null"}
+
+Return only the JSON object.
+""".strip()
+
+
+def build_financial_measure_repair_prompt(request: SemanticRepairRequest) -> str:
+    return _build_specialized_semantic_repair_prompt(
+        request=request,
+        mode_title="Financial measure repair.",
+        mode_instruction=(
+            "Change only the selected measure expression, aggregation target, "
+            "debit/credit expression, or arithmetic needed to measure the "
+            "intended financial quantity while preserving row scope."
+        ),
+    )
+
+
+def build_financial_object_repair_prompt(request: SemanticRepairRequest) -> str:
+    return _build_specialized_semantic_repair_prompt(
+        request=request,
+        mode_title="Financial object repair.",
+        mode_instruction=(
+            "Change only entity, account, category, customer, vendor, product, "
+            "payment status, or transaction-type filters in WHERE while "
+            "preserving the selected measure and computation structure."
+        ),
+    )
+
+
+def build_computation_logic_repair_prompt(request: SemanticRepairRequest) -> str:
+    return _build_specialized_semantic_repair_prompt(
+        request=request,
+        mode_title="Computation logic repair.",
+        mode_instruction=(
+            "Change only aggregation logic, DISTINCT, formulas, grouping, "
+            "ranking, ordering, limits, thresholds, or temporal/date filters. "
+            "Do not change table lineage or non-temporal entity/object filters. "
+            "Do not add GROUP BY unless the question explicitly asks for a "
+            "breakdown, comparison, ranking by group, per-period output, or "
+            "by <dimension>. For scalar aggregate questions over a period, "
+            "adjust date filters, ordering, limits, or formulas without grouping."
+        ),
+    )
+
+
+def build_specialized_semantic_repair_prompt(request: SemanticRepairRequest) -> str:
+    if request.repair_mode == "financial_measure_error":
+        return build_financial_measure_repair_prompt(request)
+
+    if request.repair_mode == "financial_object_error":
+        return build_financial_object_repair_prompt(request)
+
+    if request.repair_mode == "computation_logic_error":
+        return build_computation_logic_repair_prompt(request)
+
+    raise ValueError(f"Unsupported repair_mode: {request.repair_mode}")
+
+
+def build_non_executable_repair_prompt(request: NonExecutableRepairRequest) -> str:
     return f"""
 You are repairing a finance-related SQL query that currently does not execute.
 
@@ -202,9 +357,9 @@ Your job:
 - Use SQLite-compatible date functions such as date(...) and strftime(...).
 - Do not use unsupported SQL syntax such as EXTRACT(...), DATE_TRUNC, INTERVAL,
   ILIKE, BOOL_OR, BOOL_AND, or vendor-specific functions.
-- Preserve the original business intent from the question.
+- Use the question only as light context for preserving the original query shape.
 - Make the minimum changes needed to correct syntax, invalid functions, invalid date expressions, wrong column references, or other execution-breaking issues.
-- Do not broaden or rewrite the query unless that is required to make it executable and aligned with the question.
+- Do not broaden, regroup, optimize, change measures, or reinterpret semantics unless that is required to make the SQL executable.
 - Return exactly one repaired SQL candidate.
 - Return a short edit summary describing what was fixed.
 
@@ -229,9 +384,6 @@ Original SQL:
 
 Execution error:
 {request.execution_error or "unknown"}
-
-Structured intent:
-{intent_json}
 
 Schema:
 {request.schema_text}

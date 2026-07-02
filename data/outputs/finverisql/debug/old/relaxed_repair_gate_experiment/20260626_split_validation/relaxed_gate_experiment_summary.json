@@ -1,0 +1,20 @@
+{
+  "artifacts": {
+    "audit": "relaxed_gate_audit_rows.jsonl",
+    "frozen": "frozen_previous_non_target_1555.jsonl",
+    "merged": "merged_1713_relaxed_gate_outputs.jsonl",
+    "repairs": "relaxed_gate_repairs_158.jsonl",
+    "source": "source_1713_repair_outputs.jsonl",
+    "target": "target_missing_failed_evidence_158.jsonl"
+  },
+  "frozen_previous_non_target_rows": 1555,
+  "merged_rows": 0,
+  "output_dir": "data/outputs/finverisql/debug/relaxed_repair_gate_experiment/20260626_split_validation",
+  "repair_counts": {},
+  "repair_rows": 0,
+  "repair_skip_reasons": {},
+  "source_order_preserved": null,
+  "source_rows": 1713,
+  "split_only": true,
+  "target_missing_failed_evidence_rows": 158
+}

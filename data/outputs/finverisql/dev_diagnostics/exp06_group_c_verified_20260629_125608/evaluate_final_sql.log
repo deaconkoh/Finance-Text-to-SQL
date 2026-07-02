@@ -1,0 +1,59 @@
+Evaluating full dataset: 1726 rows
+Using workers: 4
+DB path: /Users/deaconkoh/Desktop/Finance-Text-to-SQL/data/booksql/accounting.sqlite
+[50/1726] qid=booksql_071945 time=0.27s group=A_correct_executable gen_status=success
+[100/1726] qid=booksql_070834 time=0.21s group=B_wrong_executable gen_status=success
+[150/1726] qid=booksql_071839 time=0.11s group=A_correct_executable gen_status=success
+[200/1726] qid=booksql_073090 time=0.20s group=B_wrong_executable gen_status=success
+[250/1726] qid=booksql_071166 time=0.22s group=B_wrong_executable gen_status=success
+[300/1726] qid=booksql_071589 time=0.24s group=A_correct_executable gen_status=success
+[350/1726] qid=booksql_071940 time=0.20s group=A_correct_executable gen_status=success
+[400/1726] qid=booksql_072312 time=0.24s group=A_correct_executable gen_status=success
+[450/1726] qid=booksql_072636 time=0.20s group=A_correct_executable gen_status=success
+[500/1726] qid=booksql_072971 time=0.20s group=B_wrong_executable gen_status=success
+[550/1726] qid=booksql_073253 time=0.21s group=B_wrong_executable gen_status=success
+[600/1726] qid=booksql_073436 time=0.20s group=A_correct_executable gen_status=success
+[650/1726] qid=booksql_073651 time=0.22s group=A_correct_executable gen_status=success
+[700/1726] qid=booksql_073890 time=0.22s group=A_correct_executable gen_status=success
+[750/1726] qid=booksql_074144 time=0.22s group=A_correct_executable gen_status=success
+[800/1726] qid=booksql_074371 time=0.20s group=B_wrong_executable gen_status=success
+[850/1726] qid=booksql_074655 time=0.20s group=A_correct_executable gen_status=success
+[900/1726] qid=booksql_074835 time=0.21s group=A_correct_executable gen_status=success
+[950/1726] qid=booksql_075045 time=0.21s group=A_correct_executable gen_status=success
+[1000/1726] qid=booksql_075247 time=0.18s group=A_correct_executable gen_status=success
+[1050/1726] qid=booksql_075495 time=0.22s group=A_correct_executable gen_status=success
+[1100/1726] qid=booksql_075708 time=0.21s group=A_correct_executable gen_status=success
+[1150/1726] qid=booksql_075982 time=0.10s group=B_wrong_executable gen_status=success
+[1200/1726] qid=booksql_076178 time=0.21s group=A_correct_executable gen_status=success
+[1250/1726] qid=booksql_076422 time=0.19s group=A_correct_executable gen_status=success
+[1300/1726] qid=booksql_076692 time=0.22s group=A_correct_executable gen_status=success
+[1350/1726] qid=booksql_076897 time=0.10s group=A_correct_executable gen_status=success
+[1400/1726] qid=booksql_077140 time=0.20s group=B_wrong_executable gen_status=success
+[1450/1726] qid=booksql_077335 time=0.19s group=B_wrong_executable gen_status=success
+[1500/1726] qid=booksql_077571 time=0.22s group=A_correct_executable gen_status=success
+[1550/1726] qid=booksql_077787 time=0.21s group=A_correct_executable gen_status=success
+[1600/1726] qid=booksql_077984 time=0.19s group=B_wrong_executable gen_status=success
+[1650/1726] qid=booksql_078223 time=0.21s group=A_correct_executable gen_status=success
+[1700/1726] qid=booksql_078426 time=0.21s group=A_correct_executable gen_status=success
+Evaluated rows: 1726
+Original groups:
+  A correct executable: 1172
+  B wrong executable: 529
+  C non-executable: 25
+  D ambiguous/excluded: 0
+Final groups after repair:
+  A correct executable: 1221
+  B wrong executable: 486
+  C non-executable: 19
+  D ambiguous/excluded: 0
+Original execution accuracy: 0.6790
+Final execution accuracy: 0.7074
+Execution accuracy delta: 0.0284
+Net correct gain: 49
+Repair effectiveness on true targets: 107/120 (0.8917)
+End-to-end repair precision: 107/227 (0.4714)
+Corruption rate: 58/107 (0.5421)
+Total evaluation time: 85.13s
+Saved row-level results to data/outputs/finverisql/dev_diagnostics/exp06_group_c_verified_20260629_125608/final_sql_evaluated.jsonl
+Saved metrics to data/outputs/finverisql/dev_diagnostics/exp06_group_c_verified_20260629_125608/final_sql_metrics.json
+Saved markdown metrics to data/outputs/finverisql/dev_diagnostics/exp06_group_c_verified_20260629_125608/final_sql_metrics.md
