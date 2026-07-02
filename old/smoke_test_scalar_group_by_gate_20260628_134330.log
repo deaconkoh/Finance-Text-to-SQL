@@ -1,0 +1,229 @@
+Run ID: specialized_chain_smoke_split_20260628_134330
+Root output directory: data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330
+B_LIMIT=100
+A_LIMIT=100
+==================================================
+Preparing b_only: group=B_wrong_executable limit=100
+Output: data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/b_only
+==================================================
+wrote 100 rows for B_wrong_executable -> data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/b_only/b_only_input.jsonl
+Running specialized-chain repair for b_only
+Input rows selected: 100
+Pending repair rows: 100
+Repair model: mlx-community/Llama-3.1-8B-Instruct-4bit (mlx-lm)
+Semantic repair framework: specialized_chain
+Intent mode for missing intents: nl_only
+Loading MLX-LM verifier model: mlx-community/Llama-3.1-8B-Instruct-4bit
+Fetching 6 files:   0%|          | 0/6 [00:00<?, ?it/s]Fetching 6 files: 100%|██████████| 6/6 [00:00<00:00, 7332.70it/s]
+Loading MLX-LM verifier model: mlx-community/Llama-3.1-8B-Instruct-4bit
+Fetching 6 files:   0%|          | 0/6 [00:00<?, ?it/s]Fetching 6 files: 100%|██████████| 6/6 [00:00<00:00, 6457.74it/s]
+  0%|          | 0/100 [00:00<?, ?it/s]  1%|          | 1/100 [00:50<1:22:43, 50.14s/it]  2%|▏         | 2/100 [01:43<1:24:52, 51.96s/it]  3%|▎         | 3/100 [02:30<1:20:22, 49.71s/it]  4%|▍         | 4/100 [03:17<1:17:43, 48.58s/it]  5%|▌         | 5/100 [03:59<1:13:03, 46.14s/it]  6%|▌         | 6/100 [05:03<1:22:08, 52.43s/it]  7%|▋         | 7/100 [05:44<1:15:23, 48.64s/it]  8%|▊         | 8/100 [06:45<1:20:22, 52.42s/it]  9%|▉         | 9/100 [07:46<1:23:49, 55.27s/it] 10%|█         | 10/100 [08:36<1:20:39, 53.77s/it] 11%|█         | 11/100 [09:26<1:17:46, 52.44s/it] 12%|█▏        | 12/100 [10:23<1:19:07, 53.95s/it] 13%|█▎        | 13/100 [11:29<1:23:26, 57.54s/it] 14%|█▍        | 14/100 [12:18<1:18:39, 54.88s/it] 15%|█▌        | 15/100 [13:18<1:20:11, 56.61s/it] 16%|█▌        | 16/100 [13:43<1:05:37, 46.88s/it] 17%|█▋        | 17/100 [14:06<54:53, 39.67s/it]   18%|█▊        | 18/100 [15:11<1:04:35, 47.26s/it] 19%|█▉        | 19/100 [16:12<1:09:20, 51.37s/it] 20%|██        | 20/100 [16:55<1:05:16, 48.96s/it] 21%|██        | 21/100 [18:02<1:11:40, 54.43s/it] 22%|██▏       | 22/100 [18:54<1:09:40, 53.60s/it] 23%|██▎       | 23/100 [19:33<1:03:05, 49.16s/it] 24%|██▍       | 24/100 [20:34<1:07:02, 52.92s/it] 25%|██▌       | 25/100 [21:33<1:08:17, 54.63s/it] 26%|██▌       | 26/100 [22:30<1:08:17, 55.36s/it] 27%|██▋       | 27/100 [23:09<1:01:30, 50.56s/it] 28%|██▊       | 28/100 [23:55<58:57, 49.13s/it]   29%|██▉       | 29/100 [24:54<1:01:32, 52.00s/it] 30%|███       | 30/100 [25:50<1:02:02, 53.18s/it] 31%|███       | 31/100 [26:56<1:05:40, 57.11s/it] 32%|███▏      | 32/100 [27:53<1:04:37, 57.02s/it] 33%|███▎      | 33/100 [28:52<1:04:15, 57.54s/it] 34%|███▍      | 34/100 [29:40<1:00:09, 54.69s/it] 35%|███▌      | 35/100 [30:22<55:08, 50.91s/it]   36%|███▌      | 36/100 [31:03<51:16, 48.07s/it] 37%|███▋      | 37/100 [32:04<54:33, 51.96s/it] 38%|███▊      | 38/100 [33:10<57:54, 56.03s/it] 39%|███▉      | 39/100 [34:14<59:38, 58.66s/it] 40%|████      | 40/100 [34:59<54:20, 54.35s/it] 41%|████      | 41/100 [36:02<56:06, 57.07s/it] 42%|████▏     | 42/100 [37:06<57:15, 59.23s/it] 43%|████▎     | 43/100 [37:50<51:45, 54.48s/it] 44%|████▍     | 44/100 [42:25<1:52:30, 120.54s/it] 45%|████▌     | 45/100 [59:18<5:56:00, 388.37s/it] 46%|████▌     | 46/100 [59:59<4:15:43, 284.13s/it] 47%|████▋     | 47/100 [1:00:40<3:06:42, 211.36s/it] 48%|████▊     | 48/100 [1:13:06<5:22:05, 371.65s/it] 49%|████▉     | 49/100 [1:13:52<3:52:59, 274.11s/it] 50%|█████     | 50/100 [1:14:23<2:47:36, 201.13s/it] 51%|█████     | 51/100 [1:15:04<2:04:56, 152.99s/it] 52%|█████▏    | 52/100 [1:16:07<1:40:53, 126.12s/it] 53%|█████▎    | 53/100 [1:16:58<1:21:05, 103.52s/it] 54%|█████▍    | 54/100 [1:17:41<1:05:28, 85.40s/it]  55%|█████▌    | 55/100 [1:18:40<58:01, 77.38s/it]   56%|█████▌    | 56/100 [1:19:38<52:32, 71.64s/it] 57%|█████▋    | 57/100 [1:20:49<51:03, 71.24s/it] 58%|█████▊    | 58/100 [1:21:46<46:59, 67.14s/it] 59%|█████▉    | 59/100 [1:22:16<38:16, 56.02s/it] 60%|██████    | 60/100 [1:23:17<38:20, 57.52s/it] 61%|██████    | 61/100 [1:24:27<39:44, 61.15s/it] 62%|██████▏   | 62/100 [1:25:17<36:37, 57.84s/it] 63%|██████▎   | 63/100 [1:26:17<36:01, 58.43s/it] 64%|██████▍   | 64/100 [1:27:24<36:35, 60.99s/it] 65%|██████▌   | 65/100 [1:28:25<35:34, 60.99s/it] 66%|██████▌   | 66/100 [1:29:08<31:29, 55.58s/it] 67%|██████▋   | 67/100 [1:30:11<31:54, 58.01s/it] 68%|██████▊   | 68/100 [1:30:55<28:34, 53.59s/it] 69%|██████▉   | 69/100 [1:31:59<29:17, 56.70s/it] 70%|███████   | 70/100 [1:32:59<28:52, 57.74s/it] 71%|███████   | 71/100 [1:34:02<28:38, 59.27s/it] 72%|███████▏  | 72/100 [1:34:57<27:05, 58.05s/it] 73%|███████▎  | 73/100 [1:36:01<26:57, 59.90s/it] 74%|███████▍  | 74/100 [1:37:05<26:27, 61.07s/it] 75%|███████▌  | 75/100 [1:38:10<25:59, 62.39s/it] 76%|███████▌  | 76/100 [1:39:10<24:39, 61.65s/it] 77%|███████▋  | 77/100 [1:40:12<23:37, 61.65s/it] 78%|███████▊  | 78/100 [1:40:55<20:36, 56.20s/it] 79%|███████▉  | 79/100 [1:41:58<20:19, 58.07s/it] 80%|████████  | 80/100 [1:43:08<20:36, 61.80s/it] 81%|████████  | 81/100 [1:43:54<18:00, 56.89s/it] 82%|████████▏ | 82/100 [1:44:47<16:47, 55.97s/it] 83%|████████▎ | 83/100 [1:45:31<14:50, 52.36s/it] 84%|████████▍ | 84/100 [1:46:18<13:30, 50.63s/it] 85%|████████▌ | 85/100 [1:47:02<12:08, 48.55s/it] 86%|████████▌ | 86/100 [1:48:06<12:24, 53.14s/it] 87%|████████▋ | 87/100 [1:48:50<10:56, 50.49s/it] 88%|████████▊ | 88/100 [1:49:15<08:33, 42.77s/it] 89%|████████▉ | 89/100 [1:50:16<08:51, 48.34s/it] 90%|█████████ | 90/100 [1:51:20<08:50, 53.02s/it] 91%|█████████ | 91/100 [1:52:28<08:38, 57.61s/it] 92%|█████████▏| 92/100 [1:52:55<06:26, 48.28s/it] 93%|█████████▎| 93/100 [1:54:02<06:17, 53.93s/it] 94%|█████████▍| 94/100 [1:54:55<05:22, 53.82s/it] 95%|█████████▌| 95/100 [1:56:05<04:53, 58.66s/it] 96%|█████████▌| 96/100 [1:56:56<03:44, 56.21s/it] 97%|█████████▋| 97/100 [1:58:00<02:55, 58.51s/it] 98%|█████████▊| 98/100 [1:59:06<02:01, 60.72s/it] 99%|█████████▉| 99/100 [2:00:17<01:03, 63.77s/it]100%|██████████| 100/100 [2:01:21<00:00, 64.01s/it]100%|██████████| 100/100 [2:01:21<00:00, 72.82s/it]
+Saved repair outputs to: data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/b_only/specialized_chain_repairs.jsonl
+Repair summary: attempted=100, group_b_attempted=100, group_c_attempted=0, skipped=0, generated=36
+Evaluating final SQL for b_only
+Evaluating full dataset: 100 rows
+Using workers: 4
+DB path: /Users/deaconkoh/Desktop/Finance-Text-to-SQL/data/booksql/accounting.sqlite
+[50/100] qid=booksql_071839 time=0.13s group=A_correct_executable gen_status=success
+[100/100] qid=booksql_073090 time=0.21s group=B_wrong_executable gen_status=success
+Evaluated rows: 100
+Original groups:
+  A correct executable: 0
+  B wrong executable: 100
+  C non-executable: 0
+  D ambiguous/excluded: 0
+Final groups after repair:
+  A correct executable: 34
+  B wrong executable: 66
+  C non-executable: 0
+  D ambiguous/excluded: 0
+Original execution accuracy: 0.0000
+Final execution accuracy: 0.3400
+Execution accuracy delta: 0.3400
+Net correct gain: 34
+Repair effectiveness on true targets: 34/36 (0.9444)
+End-to-end repair precision: 34/36 (0.9444)
+Corruption rate: 0/0 (0.0000)
+Total evaluation time: 5.65s
+Saved row-level results to data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/b_only/final_sql_evaluated.jsonl
+Saved metrics to data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/b_only/final_sql_metrics.json
+Saved markdown metrics to data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/b_only/final_sql_metrics.md
+Completed b_only
+Metrics: data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/b_only/final_sql_metrics.md
+--------------------------------------------------
+# Final Repair Evaluation
+
+## Headline Results
+
+| Metric | Value |
+| --- | ---: |
+| Total examples | 100 |
+| Original execution accuracy | 0.0000 |
+| Final execution accuracy | 0.3400 |
+| Execution accuracy delta | 0.3400 |
+| Net correct gain | 34 |
+| Corruption rate | 0/0 (0.0000) |
+| Targeted repair success | 34/36 (0.9444) |
+| End-to-end repair precision | 34/36 (0.9444) |
+
+## Original vs Final Groups
+
+| Group | Original | Final After Repair | Delta |
+| --- | ---: | ---: | ---: |
+| A: correct executable | 0/100 (0.0000) | 34/100 (0.3400) | +34 |
+| B: wrong executable | 100/100 (1.0000) | 66/100 (0.6600) | -34 |
+| C: non-executable | 0/100 (0.0000) | 0/100 (0.0000) | +0 |
+| D: ambiguous/excluded | 0/100 (0.0000) | 0/100 (0.0000) | +0 |
+
+## Repair Funnel
+
+| Metric | Value |
+| --- | ---: |
+| Verifier rejected rows | 100/100 (1.0000) |
+| Attempted repairs | 100/100 (1.0000) |
+| Generated repairs | 36/100 (0.3600) |
+| Applied repairs | 36/100 (0.3600) |
+| Fallback to original SQL | 64/100 (0.6400) |
+
+## Repair Effectiveness
+
+| Metric | Value |
+| --- | ---: |
+| True repair targets touched | 36/36 (1.0000) |
+| True targets fixed | 34/36 (0.9444) |
+| All original wrong/non-exec fixed | 34/100 (0.3400) |
+| End-to-end precision across all applied repairs | 34/36 (0.9444) |
+| Repaired SQL executable | 36/36 (1.0000) |
+
+## Repair Safety
+
+| Metric | Value |
+| --- | ---: |
+| Originally correct rows touched by repair | 0/0 (0.0000) |
+| Preserved originally correct rows | 0/0 (0.0000) |
+| Corrupted originally correct touched rows | 0/0 (0.0000) |
+| Overall corruption among originally correct | 0/0 (0.0000) |
+| Net gain after corruption | 34 |
+
+## Readout
+
+- Repairs changed correctness by 0.3400 execution-accuracy points.
+- The repairer fixed 34 true wrong/non-executable targets.
+- The pipeline corrupted 0 originally correct rows that were touched by repair.
+- Low end-to-end repair precision can come from either weak repair quality or verifier over-routing correct SQL into repair.
+stop_reason Counter({'same_error_persisted_after_repair': 59, 'verifier_accepts_after_repair': 36, 'repair_rejected_by_scope_check': 5})
+scope Counter({'accepted': 95, 'rejected': 5})
+final_sql_source Counter({'original_generated_sql': 64, 'specialized_chain_repair': 36})
+==================================================
+Preparing a_only: group=A_correct_executable limit=100
+Output: data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/a_only
+==================================================
+wrote 100 rows for A_correct_executable -> data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/a_only/a_only_input.jsonl
+Running specialized-chain repair for a_only
+Input rows selected: 100
+Pending repair rows: 100
+Repair model: mlx-community/Llama-3.1-8B-Instruct-4bit (mlx-lm)
+Semantic repair framework: specialized_chain
+Intent mode for missing intents: nl_only
+Loading MLX-LM verifier model: mlx-community/Llama-3.1-8B-Instruct-4bit
+Fetching 6 files:   0%|          | 0/6 [00:00<?, ?it/s]Fetching 6 files: 100%|██████████| 6/6 [00:00<00:00, 23258.62it/s]
+Loading MLX-LM verifier model: mlx-community/Llama-3.1-8B-Instruct-4bit
+Fetching 6 files:   0%|          | 0/6 [00:00<?, ?it/s]Fetching 6 files: 100%|██████████| 6/6 [00:00<00:00, 10828.67it/s]
+  0%|          | 0/100 [00:00<?, ?it/s]  1%|          | 1/100 [00:21<35:32, 21.54s/it]  2%|▏         | 2/100 [01:34<1:24:40, 51.85s/it]  3%|▎         | 3/100 [02:36<1:30:57, 56.27s/it]  4%|▍         | 4/100 [03:28<1:27:43, 54.83s/it]  5%|▌         | 5/100 [05:52<2:17:50, 87.05s/it]  6%|▌         | 6/100 [07:59<2:37:09, 100.32s/it]  7%|▋         | 7/100 [08:50<2:10:59, 84.51s/it]   8%|▊         | 8/100 [11:14<2:38:36, 103.44s/it]  9%|▉         | 9/100 [13:36<2:55:07, 115.46s/it] 10%|█         | 10/100 [15:03<2:39:49, 106.55s/it] 11%|█         | 11/100 [17:22<2:52:47, 116.49s/it] 12%|█▏        | 12/100 [17:45<2:09:22, 88.21s/it]  13%|█▎        | 13/100 [19:55<2:25:52, 100.60s/it] 14%|█▍        | 14/100 [20:44<2:02:02, 85.14s/it]  15%|█▌        | 15/100 [21:41<1:48:28, 76.57s/it] 16%|█▌        | 16/100 [22:14<1:28:49, 63.45s/it] 17%|█▋        | 17/100 [23:06<1:23:12, 60.15s/it] 18%|█▊        | 18/100 [26:07<2:11:45, 96.41s/it] 19%|█▉        | 19/100 [27:38<2:08:00, 94.82s/it] 20%|██        | 20/100 [28:07<1:40:06, 75.08s/it] 21%|██        | 21/100 [28:34<1:19:37, 60.47s/it] 22%|██▏       | 22/100 [29:01<1:05:37, 50.48s/it] 23%|██▎       | 23/100 [30:31<1:19:55, 62.28s/it] 24%|██▍       | 24/100 [31:20<1:14:08, 58.53s/it] 25%|██▌       | 25/100 [32:20<1:13:25, 58.74s/it] 26%|██▌       | 26/100 [33:21<1:13:21, 59.48s/it] 27%|██▋       | 27/100 [33:49<1:01:04, 50.19s/it] 28%|██▊       | 28/100 [35:17<1:13:52, 61.56s/it] 29%|██▉       | 29/100 [37:39<1:41:24, 85.70s/it] 30%|███       | 30/100 [39:38<1:51:31, 95.60s/it] 31%|███       | 31/100 [41:30<1:55:29, 100.42s/it] 32%|███▏      | 32/100 [43:05<1:52:03, 98.88s/it]  33%|███▎      | 33/100 [44:08<1:38:12, 87.95s/it] 34%|███▍      | 34/100 [44:50<1:21:48, 74.37s/it] 35%|███▌      | 35/100 [47:04<1:39:51, 92.17s/it] 36%|███▌      | 36/100 [47:32<1:17:47, 72.93s/it] 37%|███▋      | 37/100 [48:50<1:18:03, 74.34s/it] 38%|███▊      | 38/100 [50:41<1:28:15, 85.41s/it] 39%|███▉      | 39/100 [51:02<1:07:07, 66.03s/it] 40%|████      | 40/100 [52:16<1:08:27, 68.45s/it] 41%|████      | 41/100 [53:05<1:01:37, 62.68s/it] 42%|████▏     | 42/100 [54:40<1:09:57, 72.38s/it] 43%|████▎     | 43/100 [55:43<1:06:03, 69.54s/it] 44%|████▍     | 44/100 [57:35<1:16:49, 82.31s/it] 45%|████▌     | 45/100 [57:59<59:28, 64.89s/it]   46%|████▌     | 46/100 [58:23<47:17, 52.54s/it] 47%|████▋     | 47/100 [58:48<39:00, 44.15s/it] 48%|████▊     | 48/100 [59:56<44:34, 51.44s/it] 49%|████▉     | 49/100 [1:00:39<41:35, 48.93s/it] 50%|█████     | 50/100 [1:01:27<40:25, 48.51s/it] 51%|█████     | 51/100 [1:01:50<33:24, 40.91s/it] 52%|█████▏    | 52/100 [1:03:07<41:23, 51.75s/it] 53%|█████▎    | 53/100 [1:03:30<33:52, 43.24s/it] 54%|█████▍    | 54/100 [1:04:21<34:56, 45.57s/it] 55%|█████▌    | 55/100 [1:06:14<49:23, 65.86s/it] 56%|█████▌    | 56/100 [1:07:34<51:18, 69.96s/it] 57%|█████▋    | 57/100 [1:07:59<40:26, 56.44s/it] 58%|█████▊    | 58/100 [1:08:21<32:16, 46.10s/it] 59%|█████▉    | 59/100 [1:09:07<31:30, 46.11s/it] 60%|██████    | 60/100 [1:10:53<42:40, 64.01s/it] 61%|██████    | 61/100 [1:12:30<48:06, 74.02s/it] 62%|██████▏   | 62/100 [1:14:02<50:15, 79.35s/it] 63%|██████▎   | 63/100 [1:14:43<41:48, 67.79s/it] 64%|██████▍   | 64/100 [1:16:01<42:32, 70.92s/it] 65%|██████▌   | 65/100 [1:16:26<33:19, 57.12s/it] 66%|██████▌   | 66/100 [1:19:43<56:06, 99.01s/it] 67%|██████▋   | 67/100 [1:20:07<42:08, 76.61s/it] 68%|██████▊   | 68/100 [1:20:53<35:54, 67.34s/it] 69%|██████▉   | 69/100 [1:21:55<34:03, 65.90s/it] 70%|███████   | 70/100 [1:23:10<34:17, 68.57s/it] 71%|███████   | 71/100 [1:24:57<38:40, 80.01s/it] 72%|███████▏  | 72/100 [1:26:00<34:56, 74.89s/it] 73%|███████▎  | 73/100 [1:26:48<30:05, 66.89s/it] 74%|███████▍  | 74/100 [1:28:19<32:07, 74.14s/it] 75%|███████▌  | 75/100 [1:28:42<24:31, 58.84s/it] 76%|███████▌  | 76/100 [1:30:57<32:37, 81.56s/it] 77%|███████▋  | 77/100 [1:31:56<28:44, 74.99s/it] 78%|███████▊  | 78/100 [1:32:21<21:59, 60.00s/it] 79%|███████▉  | 79/100 [1:32:43<17:00, 48.59s/it] 80%|████████  | 80/100 [1:33:12<14:13, 42.67s/it] 81%|████████  | 81/100 [1:34:07<14:43, 46.48s/it] 82%|████████▏ | 82/100 [1:34:53<13:52, 46.26s/it] 83%|████████▎ | 83/100 [1:36:19<16:25, 57.97s/it] 84%|████████▍ | 84/100 [1:37:10<14:58, 56.13s/it] 85%|████████▌ | 85/100 [1:39:40<21:02, 84.20s/it] 86%|████████▌ | 86/100 [1:40:07<15:40, 67.17s/it] 87%|████████▋ | 87/100 [1:41:33<15:43, 72.56s/it] 88%|████████▊ | 88/100 [1:42:01<11:52, 59.42s/it] 89%|████████▉ | 89/100 [1:42:27<09:01, 49.24s/it] 90%|█████████ | 90/100 [1:43:54<10:06, 60.68s/it] 91%|█████████ | 91/100 [1:46:07<12:20, 82.23s/it] 92%|█████████▏| 92/100 [1:46:37<08:52, 66.52s/it] 93%|█████████▎| 93/100 [1:48:10<08:42, 74.68s/it] 94%|█████████▍| 94/100 [1:49:34<07:43, 77.31s/it] 95%|█████████▌| 95/100 [1:50:50<06:24, 76.93s/it] 96%|█████████▌| 96/100 [1:52:04<05:04, 76.20s/it] 97%|█████████▋| 97/100 [1:54:35<04:55, 98.54s/it] 98%|█████████▊| 98/100 [1:56:26<03:24, 102.33s/it] 99%|█████████▉| 99/100 [1:57:35<01:32, 92.38s/it] 100%|██████████| 100/100 [1:58:54<00:00, 88.31s/it]100%|██████████| 100/100 [1:58:54<00:00, 71.35s/it]
+Saved repair outputs to: data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/a_only/specialized_chain_repairs.jsonl
+Repair summary: attempted=100, group_b_attempted=0, group_c_attempted=0, skipped=0, generated=35
+Evaluating final SQL for a_only
+Evaluating full dataset: 100 rows
+Using workers: 4
+DB path: /Users/deaconkoh/Desktop/Finance-Text-to-SQL/data/booksql/accounting.sqlite
+[50/100] qid=booksql_071945 time=0.29s group=A_correct_executable gen_status=success
+[100/100] qid=booksql_072845 time=0.21s group=A_correct_executable gen_status=success
+Evaluated rows: 100
+Original groups:
+  A correct executable: 100
+  B wrong executable: 0
+  C non-executable: 0
+  D ambiguous/excluded: 0
+Final groups after repair:
+  A correct executable: 83
+  B wrong executable: 17
+  C non-executable: 0
+  D ambiguous/excluded: 0
+Original execution accuracy: 1.0000
+Final execution accuracy: 0.8300
+Execution accuracy delta: -0.1700
+Net correct gain: -17
+Repair effectiveness on true targets: 0/0 (0.0000)
+End-to-end repair precision: 0/35 (0.0000)
+Corruption rate: 17/35 (0.4857)
+Total evaluation time: 6.88s
+Saved row-level results to data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/a_only/final_sql_evaluated.jsonl
+Saved metrics to data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/a_only/final_sql_metrics.json
+Saved markdown metrics to data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/a_only/final_sql_metrics.md
+Completed a_only
+Metrics: data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330/a_only/final_sql_metrics.md
+--------------------------------------------------
+# Final Repair Evaluation
+
+## Headline Results
+
+| Metric | Value |
+| --- | ---: |
+| Total examples | 100 |
+| Original execution accuracy | 1.0000 |
+| Final execution accuracy | 0.8300 |
+| Execution accuracy delta | -0.1700 |
+| Net correct gain | -17 |
+| Corruption rate | 17/35 (0.4857) |
+| Targeted repair success | 0/0 (0.0000) |
+| End-to-end repair precision | 0/35 (0.0000) |
+
+## Original vs Final Groups
+
+| Group | Original | Final After Repair | Delta |
+| --- | ---: | ---: | ---: |
+| A: correct executable | 100/100 (1.0000) | 83/100 (0.8300) | -17 |
+| B: wrong executable | 0/100 (0.0000) | 17/100 (0.1700) | +17 |
+| C: non-executable | 0/100 (0.0000) | 0/100 (0.0000) | +0 |
+| D: ambiguous/excluded | 0/100 (0.0000) | 0/100 (0.0000) | +0 |
+
+## Repair Funnel
+
+| Metric | Value |
+| --- | ---: |
+| Verifier rejected rows | 100/100 (1.0000) |
+| Attempted repairs | 100/100 (1.0000) |
+| Generated repairs | 35/100 (0.3500) |
+| Applied repairs | 35/100 (0.3500) |
+| Fallback to original SQL | 65/100 (0.6500) |
+
+## Repair Effectiveness
+
+| Metric | Value |
+| --- | ---: |
+| True repair targets touched | 0/35 (0.0000) |
+| True targets fixed | 0/0 (0.0000) |
+| All original wrong/non-exec fixed | 0/0 (0.0000) |
+| End-to-end precision across all applied repairs | 0/35 (0.0000) |
+| Repaired SQL executable | 35/35 (1.0000) |
+
+## Repair Safety
+
+| Metric | Value |
+| --- | ---: |
+| Originally correct rows touched by repair | 35/100 (0.3500) |
+| Preserved originally correct rows | 83/100 (0.8300) |
+| Corrupted originally correct touched rows | 17/35 (0.4857) |
+| Overall corruption among originally correct | 17/100 (0.1700) |
+| Net gain after corruption | -17 |
+
+## Readout
+
+- Repairs changed correctness by -0.1700 execution-accuracy points.
+- The repairer fixed 0 true wrong/non-executable targets.
+- The pipeline corrupted 17 originally correct rows that were touched by repair.
+- Low end-to-end repair precision can come from either weak repair quality or verifier over-routing correct SQL into repair.
+stop_reason Counter({'verifier_accepts_after_repair': 35, 'repair_rejected_by_scope_check': 28, 'same_error_persisted_after_repair': 26, 'repair_rejected_by_scalar_group_by_gate': 10, 'reverification_failed_or_abstained': 1})
+scope Counter({'accepted': 72, 'rejected': 28})
+final_sql_source Counter({'original_generated_sql': 65, 'specialized_chain_repair': 35})
+Pipeline done. Root output directory: data/outputs/finverisql/debug/specialized_chain_smoke_split_20260628_134330

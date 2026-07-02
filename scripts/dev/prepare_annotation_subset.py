@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input-jsonl",
         required=True,
-        help="Evaluated row-level JSONL from evaluate_outputs.py.",
+        help="Evaluated row-level JSONL from evaluate_baseline_sql.py.",
     )
     parser.add_argument(
         "--output-path",

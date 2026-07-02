@@ -1,0 +1,100 @@
+{
+  "join_mode": "inner_join_question_id",
+  "dedupe_policy": "last",
+  "before_input_rows": 7605,
+  "before_unique_question_ids": 7605,
+  "before_duplicate_rows": 0,
+  "after_input_rows": 1713,
+  "after_unique_question_ids": 1701,
+  "after_duplicate_rows": 12,
+  "joined_question_ids": 1701,
+  "sets": [
+    {
+      "label": "before",
+      "total_rows": 1701,
+      "evaluable_rows": 1523,
+      "status_counts": {
+        "hard_financial_contradiction": 95,
+        "no_financial_contradiction": 1428,
+        "not_evaluable": 178
+      },
+      "hard_finding_counts": {
+        "posting_side_reversal": 95
+      },
+      "hard_financial_contradiction_rate": 0.0623768877216021,
+      "no_contradiction_rate": 0.9376231122783979,
+      "not_evaluable_rate": 0.10464432686654909,
+      "warning_counts": {
+        "aggregation_or_grain_error": 96,
+        "financial_measure_mismatch": 379,
+        "output_shape_warning": 45,
+        "financial_scope_warning": 3540,
+        "unresolved_measure_warning": 3
+      },
+      "warning_rates": {
+        "aggregation_or_grain_error": 0.06303348653972422,
+        "financial_measure_mismatch": 0.24885095206828628,
+        "output_shape_warning": 0.02954694681549573,
+        "financial_scope_warning": 2.324359816152331,
+        "unresolved_measure_warning": 0.001969796454366382
+      },
+      "esm_2x2": {
+        "hard_financial_contradiction__esm_pass": 95,
+        "hard_financial_contradiction__esm_fail": 0,
+        "no_financial_contradiction__esm_pass": 900,
+        "no_financial_contradiction__esm_fail": 528,
+        "not_evaluable_excluded": 178,
+        "missing_execution_match_excluded": 0
+      },
+      "execution_accuracy": 0.6890064667842446,
+      "execution_correct_rows": 1172,
+      "execution_metric_rows": 1701
+    },
+    {
+      "label": "after",
+      "total_rows": 1701,
+      "evaluable_rows": 1505,
+      "status_counts": {
+        "hard_financial_contradiction": 95,
+        "no_financial_contradiction": 1410,
+        "not_evaluable": 196
+      },
+      "hard_finding_counts": {
+        "posting_side_reversal": 95
+      },
+      "hard_financial_contradiction_rate": 0.06312292358803986,
+      "no_contradiction_rate": 0.9368770764119602,
+      "not_evaluable_rate": 0.11522633744855967,
+      "warning_counts": {
+        "aggregation_or_grain_error": 99,
+        "financial_measure_mismatch": 350,
+        "output_shape_warning": 54,
+        "financial_scope_warning": 3492,
+        "unresolved_measure_warning": 3
+      },
+      "warning_rates": {
+        "aggregation_or_grain_error": 0.06578073089700996,
+        "financial_measure_mismatch": 0.23255813953488372,
+        "output_shape_warning": 0.035880398671096346,
+        "financial_scope_warning": 2.320265780730897,
+        "unresolved_measure_warning": 0.0019933554817275745
+      },
+      "esm_2x2": {
+        "hard_financial_contradiction__esm_pass": 92,
+        "hard_financial_contradiction__esm_fail": 3,
+        "no_financial_contradiction__esm_pass": 937,
+        "no_financial_contradiction__esm_fail": 473,
+        "not_evaluable_excluded": 196,
+        "missing_execution_match_excluded": 0
+      },
+      "execution_accuracy": 0.715461493239271,
+      "execution_correct_rows": 1217,
+      "execution_metric_rows": 1701
+    }
+  ],
+  "deltas": {
+    "execution_accuracy_delta": 0.026455026455026398,
+    "hard_financial_contradiction_rate_delta": 0.0007460358664377609,
+    "not_evaluable_rate_delta": 0.010582010582010581
+  }
+}

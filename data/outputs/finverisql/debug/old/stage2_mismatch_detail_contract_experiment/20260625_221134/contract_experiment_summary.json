@@ -1,0 +1,27 @@
+{
+  "artifacts": {
+    "audit": "hint_quality_audit_rows.jsonl",
+    "frozen": "frozen_previous_non_rejected_893.jsonl",
+    "merged": "merged_1713_simplified_schema_outputs.jsonl",
+    "repairs": "simplified_schema_repairs_820.jsonl",
+    "source": "source_1713_repair_outputs.jsonl",
+    "target": "experiment_b_target_820_rows.jsonl",
+    "verifier": "simplified_schema_verifier_820.jsonl"
+  },
+  "frozen_previous_non_rejected_rows": 893,
+  "merged_rows": 1713,
+  "new_verifier_abstained_rows": 1,
+  "new_verifier_accepted_rows": 79,
+  "new_verifier_rejected_rows": 740,
+  "output_dir": "data/outputs/finverisql/debug/stage2_mismatch_detail_contract_experiment/20260625_221134",
+  "repair_counts": {},
+  "repair_rows": 820,
+  "repair_skip_reasons": {
+    "verification_not_rejected": 80
+  },
+  "source_order_preserved": true,
+  "source_rows": 1713,
+  "split_only": false,
+  "target_original_rejected_rows": 820,
+  "verifier_rows": 820
+}

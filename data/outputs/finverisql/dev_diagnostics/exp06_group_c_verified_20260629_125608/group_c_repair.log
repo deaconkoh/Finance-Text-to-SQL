@@ -1,0 +1,12 @@
+Input rows selected: 25
+Pending repair rows: 25
+Repair model: mlx-community/Llama-3.1-8B-Instruct-4bit (mlx-lm)
+Semantic repair framework: specialized_chain
+Intent mode for missing intents: nl_only
+Loading MLX-LM verifier model: mlx-community/Llama-3.1-8B-Instruct-4bit
+Fetching 6 files:   0%|          | 0/6 [00:00<?, ?it/s]Fetching 6 files: 100%|██████████| 6/6 [00:00<00:00, 54120.05it/s]
+Loading MLX-LM verifier model: mlx-community/Llama-3.1-8B-Instruct-4bit
+Fetching 6 files:   0%|          | 0/6 [00:00<?, ?it/s]Fetching 6 files: 100%|██████████| 6/6 [00:00<00:00, 12958.71it/s]
+  0%|          | 0/25 [00:00<?, ?it/s]  4%|▍         | 1/25 [00:33<13:33, 33.89s/it]  8%|▊         | 2/25 [02:24<30:15, 78.92s/it] 12%|█▏        | 3/25 [02:38<18:06, 49.38s/it] 16%|█▌        | 4/25 [03:50<20:21, 58.19s/it] 20%|██        | 5/25 [06:51<34:12, 102.61s/it] 24%|██▍       | 6/25 [08:45<33:40, 106.32s/it] 28%|██▊       | 7/25 [09:20<24:55, 83.08s/it]  32%|███▏      | 8/25 [10:28<22:11, 78.33s/it] 36%|███▌      | 9/25 [11:04<17:20, 65.03s/it] 40%|████      | 10/25 [13:31<22:33, 90.26s/it] 44%|████▍     | 11/25 [14:05<17:06, 73.31s/it] 48%|████▊     | 12/25 [15:58<18:28, 85.23s/it] 52%|█████▏    | 13/25 [16:11<12:39, 63.32s/it] 56%|█████▌    | 14/25 [16:25<08:52, 48.43s/it] 60%|██████    | 15/25 [18:01<10:28, 62.82s/it] 64%|██████▍   | 16/25 [18:17<07:18, 48.75s/it] 68%|██████▊   | 17/25 [18:54<06:00, 45.03s/it] 72%|███████▏  | 18/25 [20:32<07:08, 61.22s/it] 76%|███████▌  | 19/25 [21:10<05:25, 54.18s/it] 80%|████████  | 20/25 [23:52<07:11, 86.40s/it] 84%|████████▍ | 21/25 [25:03<05:27, 81.90s/it] 88%|████████▊ | 22/25 [25:39<03:24, 68.10s/it] 92%|█████████▏| 23/25 [27:18<02:34, 77.27s/it] 96%|█████████▌| 24/25 [27:53<01:04, 64.56s/it]100%|██████████| 25/25 [29:11<00:00, 68.73s/it]100%|██████████| 25/25 [29:11<00:00, 70.06s/it]
+Saved repair outputs to: data/outputs/finverisql/dev_diagnostics/exp06_group_c_verified_20260629_125608/group_c_repairs.jsonl
+Repair summary: attempted=25, group_b_attempted=0, group_c_attempted=25, skipped=0, generated=9

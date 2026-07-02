@@ -1,0 +1,9 @@
+template,activated_row_count,fixture_states_attempted,support_valid_usable_states,invalid_states,mutant_validated_template_suites,generated_tested_states,eq_acct_failures,top_invalid_state_reasons,top_template_suite_failure_reasons,likely_bottleneck
+posting_side_debit_credit,591,1773,0,1773,0,0,0,"{""gold_result_all_null"": 855, ""gold_result_empty"": 918}","{""no_valid_fixture_state"": 591}",support validation
+ar_ap_scope,0,0,0,0,0,0,0,{},{},not activated
+income_expense_scope,373,1119,0,1119,0,0,0,"{""gold_result_all_null"": 342, ""gold_result_empty"": 777}","{""no_valid_fixture_state"": 373}",support validation
+asset_liability_scope,0,0,0,0,0,0,0,{},{},not activated
+balance_count_status_proxy,295,885,885,0,0,0,0,{},"{""mutants_not_distinguished"": 295}",mutant validation
+quantity_transaction_count,339,1017,885,132,0,0,0,"{""gold_result_all_null"": 30, ""gold_result_empty"": 102}","{""mutant_generation_not_supported"": 295, ""no_valid_fixture_state"": 44}",mutant validation
+transaction_type_scope,476,1428,885,543,0,0,0,"{""gold_result_all_null"": 543}","{""mutants_not_distinguished"": 295, ""no_valid_fixture_state"": 181}",mutant validation
+customer_vendor_scope,596,1788,576,1212,136,408,0,"{""gold_result_all_null"": 591, ""gold_result_empty"": 621}","{""mutants_not_distinguished"": 56, ""no_valid_fixture_state"": 404}",tested

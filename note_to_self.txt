@@ -1,0 +1,62 @@
+Steps to run A100 workstation
+
+Step 1:
+Before running .sh, check:
+docker --version
+docker ps
+ollama -v (or ollama --version)  
+curl http://localhost:11434
+nvidia-smi
+
+Step 2: (# Create and move into your temporary project root)
+mkdir -p /tmp/deacon_project
+cd /tmp/deacon_project
+git clone https://github.com/deaconkoh/Finance-Text-to-SQL.git .
+cd Finance-Text-to-SQL
+
+copy missing local data: data/booksql/accounting.sqlite (from my mac) to the temp/deacon_project/Finance-Text-to-SQL/data/booksql/accounting.sqlite
+scp ~/Desktop/Finance-Text-to-SQL/data/booksql/accounting.sqlite \
+    your_manager_username@remote_host_ip:/tmp/deacon_project/Finance-Text-to-SQL/data/booksql/accounting.sqlite
+
+
+Step 3: 
+python -m venv .venv
+
+# Activate the virtual environment
+source .venv/bin/activate
+
+# Upgrade pip and install Linux-specific requirements
+python -m pip install --upgrade pip
+python -m pip install -r requirements-linux.txt
+
+step 4:
+chmod +x 1_setup_env.sh
+./1_setup_env.sh
+
+Step 5:
+chmod +x 2_run_ablations.sh
+./2_run_ablations.sh
+
+
+step 6:
+EITHER DO IT VIA GIT COMMIT OR SCP
+
+git add data/outputs/
+git commit -m "chore: save ablation outputs"
+git push origin main
+
+OR
+
+scp -r your_manager_username@remote_host_ip:/tmp/deacon_project/Finance-Text-to-SQL/data/outputs/finverisql/<RUN_ID> ~/Desktop/finveri_outputs/
+
+Step 7:
+# Run the script to delete the container, model weights, and docker image cache
+chmod +x 3_clean_up.sh
+./3_clean_up.sh
+
+# Deactivate your local python environment
+deactivate
+
+# Escape the project directory and vaporize your temporary code folder entirely
+cd /tmp
+rm -rf /tmp/deacon_project

@@ -1,0 +1,221 @@
+{
+  "total_examples": 1713,
+  "metric_total_examples": 1713,
+  "group_counts": {
+    "A_correct_executable": 1178,
+    "B_wrong_executable": 483,
+    "C_non_executable": 52,
+    "D_ambiguous": 0
+  },
+  "execution_accuracy": 0.6876824284880327,
+  "valid_sql_rate": 0.9696438995913602,
+  "executable_wrong_rate": 0.2819614711033275,
+  "num_execution_correct": 1178,
+  "num_valid_sql": 1661,
+  "num_executable_wrong": 483,
+  "num_execution_error": 52,
+  "num_excluded_ambiguous": 0,
+  "slowest_rows": [
+    {
+      "question_id": "booksql_075417",
+      "evaluation_time_seconds": 77.3357,
+      "evaluation_group": "C_non_executable",
+      "generated_error": "query_timeout: SQLite progress limit exceeded (max_progress_steps=2000000)",
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_070842",
+      "evaluation_time_seconds": 0.4825,
+      "evaluation_group": "A_correct_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_070850",
+      "evaluation_time_seconds": 0.4756,
+      "evaluation_group": "A_correct_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_070829",
+      "evaluation_time_seconds": 0.475,
+      "evaluation_group": "A_correct_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_070834",
+      "evaluation_time_seconds": 0.4733,
+      "evaluation_group": "B_wrong_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_076667",
+      "evaluation_time_seconds": 0.4304,
+      "evaluation_group": "B_wrong_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_075455",
+      "evaluation_time_seconds": 0.4291,
+      "evaluation_group": "A_correct_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_077597",
+      "evaluation_time_seconds": 0.2869,
+      "evaluation_group": "A_correct_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_073559",
+      "evaluation_time_seconds": 0.2823,
+      "evaluation_group": "A_correct_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_074650",
+      "evaluation_time_seconds": 0.2814,
+      "evaluation_group": "A_correct_executable",
+      "generated_error": null,
+      "gold_error": null
+    }
+  ],
+  "repair_summary": {
+    "final_sql_source_counts": {
+      "original_generated_sql": 894,
+      "repaired_sql": 819
+    },
+    "original_group_counts": {
+      "A_correct_executable": 1183,
+      "B_wrong_executable": 530
+    },
+    "final_group_counts": {
+      "A_correct_executable": 1178,
+      "B_wrong_executable": 483,
+      "C_non_executable": 52
+    },
+    "repair_status_counts": {
+      "skipped": 893,
+      "success": 820
+    },
+    "repair_result_counts": {
+      "skipped": 893,
+      "success": 819,
+      "failed": 1
+    },
+    "repair_mode_counts": {
+      "null": 893,
+      "semantic": 820
+    },
+    "baseline_comparison": {
+      "original_metric_total_examples": 1713,
+      "final_metric_total_examples": 1713,
+      "original_execution_accuracy": 0.6906012842965558,
+      "final_execution_accuracy": 0.6876824284880327,
+      "delta_execution_accuracy": -0.0029188558085230243,
+      "original_execution_correct": 1183,
+      "final_execution_correct": 1178,
+      "net_correct_gain": -5
+    },
+    "repair_coverage": {
+      "verifier_rejected_rows": 820,
+      "rejection_rate": 0.47869235259778165,
+      "attempted_repairs": 820,
+      "repair_attempt_rate": 0.47869235259778165,
+      "generated_repairs": 819,
+      "repair_generation_rate": 0.998780487804878,
+      "applied_repairs": 819,
+      "repair_application_rate": 0.47810858143607704,
+      "skipped_repairs": 893,
+      "repair_skip_rate": 0.5213076474022184,
+      "repair_error_rows": 1,
+      "repair_failure_rate": 0.0012195121951219512,
+      "fallback_original_sql_rows": 894,
+      "missing_final_sql_rows": 0
+    },
+    "repair_effectiveness": {
+      "originally_wrong_or_nonexec_rows": 530,
+      "wrong_to_correct_rows": 181,
+      "wrong_to_correct_rate": 0.34150943396226413,
+      "applied_wrong_rows": 389,
+      "applied_wrong_to_correct_rows": 181,
+      "applied_wrong_to_correct_rate": 0.4652956298200514,
+      "repair_success_rate": 0.22073170731707317,
+      "repair_precision": 0.221001221001221,
+      "wrong_to_wrong_or_nonexec_rows": 349,
+      "wrong_to_wrong_or_nonexec_rate": 0.6584905660377358,
+      "nonexec_to_correct_rows": 0,
+      "nonexec_to_correct_rate": 0.0,
+      "executable_repair_rate": 0.9365079365079365,
+      "executable_repairs": 767,
+      "repaired_rows_final_correct": 425,
+      "repaired_rows_final_correct_rate": 0.518925518925519
+    },
+    "repair_safety": {
+      "originally_correct_rows": 1183,
+      "original_correct_repaired_rows": 430,
+      "preserved_originally_correct_rows": 997,
+      "corrupted_originally_correct_rows": 186,
+      "corruption_rate": 0.4325581395348837,
+      "overall_corruption_rate": 0.15722738799661876,
+      "preservation_rate": 0.8427726120033813,
+      "net_gain_after_corruption": -5
+    },
+    "probe_summary": {
+      "probed_rows": 283,
+      "probe_rate": 0.16520723876240515,
+      "total_probes": 455,
+      "avg_probes_per_query": 0.2656158785755984,
+      "avg_probes_per_rejected_query": 0.06341463414634146,
+      "probed_rejected_rows": 48,
+      "probe_rejection_rate": 0.1696113074204947,
+      "non_probed_rows": 1430,
+      "non_probe_rejection_rate": 0.5398601398601398,
+      "ambiguous_rows": 3,
+      "ambiguous_rate": 0.0017513134851138354,
+      "abstention_rows": 3,
+      "abstention_rate": 0.0017513134851138354,
+      "high_confidence_rows": 1577,
+      "high_confidence_rejected_rows": 689,
+      "high_confidence_rejection_rate": 0.4369055168040583
+    },
+    "headline_metrics": {
+      "original_execution_accuracy": 0.6906012842965558,
+      "final_execution_accuracy": 0.6876824284880327,
+      "delta_execution_accuracy": -0.0029188558085230243,
+      "net_correct_gain": -5,
+      "repair_attempt_rate": 0.47869235259778165,
+      "repair_generation_rate": 0.998780487804878,
+      "repair_application_rate": 0.47810858143607704,
+      "targeted_repair_success_rate": 0.4652956298200514,
+      "end_to_end_repair_precision": 0.221001221001221,
+      "corruption_rate": 0.4325581395348837,
+      "overall_corruption_rate": 0.15722738799661876
+    },
+    "repaired_sql_rows": 819,
+    "fallback_original_sql_rows": 894,
+    "missing_final_sql_rows": 0,
+    "originally_correct_rows": 1183,
+    "preserved_originally_correct_rows": 997,
+    "corrupted_originally_correct_rows": 186,
+    "repaired_rows_final_correct": 425,
+    "repair_application_rate": 0.47810858143607704,
+    "corruption_rate": 0.4325581395348837,
+    "repaired_rows_final_correct_rate": 0.518925518925519
+  },
+  "total_evaluation_time_seconds": 117.4608,
+  "workers": 4,
+  "max_progress_steps": 2000000,
+  "progress_check_interval": 1000,
+  "evaluate_subset": false,
+  "subset_size": null,
+  "subset_start": null,
+  "original_num_rows": 1713
+}

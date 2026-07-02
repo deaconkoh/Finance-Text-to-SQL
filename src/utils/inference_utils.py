@@ -21,10 +21,10 @@ callers explicitly choose a few-shot setting.
 import json
 import re
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 import urllib.request
 
-from finverisql.verifier import MaxTokensReachedError
+from src.finverisql.verifier import MaxTokensReachedError
 
 
 def build_ollama_generate_fn(

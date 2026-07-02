@@ -1,0 +1,6 @@
+datasets
+huggingface_hub
+pyyaml
+tqdm
+pytest
+sqlglot
