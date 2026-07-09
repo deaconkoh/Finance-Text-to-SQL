@@ -1,0 +1,44 @@
+{
+  "join_mode": "single_file",
+  "dedupe_policy": "last",
+  "before_input_rows": 7605,
+  "before_unique_question_ids": 7605,
+  "before_duplicate_rows": 0,
+  "after_input_rows": null,
+  "after_unique_question_ids": null,
+  "after_duplicate_rows": null,
+  "joined_question_ids_before_group_d_filter": 7605,
+  "group_d_filter_enabled": true,
+  "group_d_filtered_question_ids": 1002,
+  "joined_question_ids": 6603,
+  "sets": [
+    {
+      "label": "before",
+      "total_rows": 6603,
+      "execution_match_available_rows": 6603,
+      "ex_pass_rows": 5048,
+      "ex_fail_rows": 1555,
+      "asa_decision_available_rows": 5947,
+      "asa_strict_pass_rows": 4371,
+      "asa_strict_fail_rows": 1576,
+      "asa_lower_bound_pass_rows": 4371,
+      "inv_evaluable_rows_among_ex_pass": 4392,
+      "inv_failure_count": 21,
+      "ex_accuracy": 0.7645009844010299,
+      "asa_strict_accuracy": 0.7349924331595763,
+      "asa_lower_bound_accuracy": 0.6619718309859155,
+      "fper": 0.0047814207650273225,
+      "fper_lower_bound": 0.13411251980982566,
+      "inv_evaluability_rate_among_ex_pass": 0.8700475435816165,
+      "inv_failure_rate_among_ex_pass_decision_available": 0.0047814207650273225,
+      "fcr_hard_finding_counts": {
+        "posting_side_reversal": 21
+      },
+      "inv_not_evaluable_reason_counts": {
+        "missing_financial_annotation": 606,
+        "unsupported_finance_bearing_expression": 39,
+        "unsupported_finance_bearing_lineage": 617
+      }
+    }
+  ]
+}

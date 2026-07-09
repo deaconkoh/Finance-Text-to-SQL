@@ -17,6 +17,9 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.asa_metrics.asa_metrics import evaluate_asa_rows
 
 
+GROUP_D = "D_ambiguous"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -57,6 +60,14 @@ def parse_args() -> argparse.Namespace:
         "--include-fcr-details",
         action="store_true",
         help="Include full FCR findings and warnings in row diagnostics.",
+    )
+    parser.add_argument(
+        "--include-group-d",
+        action="store_true",
+        help=(
+            "Include Group D ambiguous/excluded rows. By default they are "
+            "filtered out to match primary EX metric denominators."
+        ),
     )
     return parser.parse_args()
 
@@ -104,6 +115,47 @@ def dedupe_by_question_id(
     return deduped, duplicate_count
 
 
+def is_group_d_or_excluded(row: dict[str, Any]) -> bool:
+    return (
+        row.get("excluded_from_primary_metrics") is True
+        or row.get("evaluation_group") == GROUP_D
+    )
+
+
+def filter_primary_metric_rows(
+    by_id: dict[str, dict[str, Any]],
+    question_ids: list[str],
+) -> tuple[list[str], int]:
+    kept_ids = [
+        question_id
+        for question_id in question_ids
+        if not is_group_d_or_excluded(by_id[question_id])
+    ]
+    return kept_ids, len(question_ids) - len(kept_ids)
+
+
+def filter_joined_primary_metric_rows(
+    before_by_id: dict[str, dict[str, Any]],
+    after_by_id: dict[str, dict[str, Any]] | None,
+    question_ids: list[str],
+) -> tuple[list[str], int]:
+    kept_ids = []
+    filtered = 0
+
+    for question_id in question_ids:
+        if is_group_d_or_excluded(before_by_id[question_id]):
+            filtered += 1
+            continue
+
+        if after_by_id is not None and is_group_d_or_excluded(after_by_id[question_id]):
+            filtered += 1
+            continue
+
+        kept_ids.append(question_id)
+
+    return kept_ids, filtered
+
+
 def write_json(path: str | Path, data: dict[str, Any]) -> None:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -129,6 +181,7 @@ def write_markdown(path: str | Path, metrics: dict[str, Any]) -> None:
         f"- Join mode: `{metrics['join_mode']}`",
         f"- Question IDs evaluated: {metrics['joined_question_ids']}",
         f"- Dedupe policy: `{metrics['dedupe_policy']}`",
+        f"- Group D filtered: {metrics['group_d_filtered_question_ids']}",
         "",
         "| Set | Rows | EX Acc | ASA Strict Acc | ASA Lower Bound | FPER | FPER Lower Bound | Inv Evaluability | Inv Failures |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -203,6 +256,21 @@ def main() -> None:
     if args.limit is not None:
         question_ids = question_ids[: args.limit]
 
+    joined_before_group_d_filter = len(question_ids)
+    group_d_filtered = 0
+    if not args.include_group_d:
+        if after_by_id is None:
+            question_ids, group_d_filtered = filter_primary_metric_rows(
+                before_by_id,
+                question_ids,
+            )
+        else:
+            question_ids, group_d_filtered = filter_joined_primary_metric_rows(
+                before_by_id,
+                after_by_id,
+                question_ids,
+            )
+
     before_selected = [before_by_id[question_id] for question_id in question_ids]
     before_metrics, before_outputs = evaluate_asa_rows(
         before_selected,
@@ -233,6 +301,9 @@ def main() -> None:
         "after_input_rows": len(after_rows) if args.after_jsonl else None,
         "after_unique_question_ids": len(after_by_id) if after_by_id is not None else None,
         "after_duplicate_rows": after_duplicates if args.after_jsonl else None,
+        "joined_question_ids_before_group_d_filter": joined_before_group_d_filter,
+        "group_d_filter_enabled": not args.include_group_d,
+        "group_d_filtered_question_ids": group_d_filtered,
         "joined_question_ids": len(question_ids),
         "sets": sets,
     }
@@ -257,6 +328,8 @@ def main() -> None:
 
     print(f"Join mode: {join_mode}")
     print(f"Question IDs evaluated: {len(question_ids)}")
+    if not args.include_group_d:
+        print(f"Group D filtered: {group_d_filtered}")
     for item in sets:
         print(
             "{label}: ex_acc={ex:.4f} asa_strict={asa:.4f} "

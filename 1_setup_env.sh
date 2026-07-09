@@ -3,9 +3,9 @@ set -euo pipefail
 
 OLLAMA_CONTAINER_NAME="${OLLAMA_CONTAINER_NAME:-ephemeral-ollama}"
 OLLAMA_IMAGE="${OLLAMA_IMAGE:-ollama/ollama}"
-OLLAMA_WORKSPACE="${OLLAMA_WORKSPACE:-/tmp_deacon/finveri_ollama_workspace}"
+OLLAMA_WORKSPACE="${OLLAMA_WORKSPACE:-/$HOME/finveri_ollama_workspace}"
 
-POSTGEN_MODEL="${POSTGEN_MODEL:-llama3.1:8b-instruct-fp16}"
+POSTGEN_MODEL="${POSTGEN_MODEL:-llama3.1:8b}"
 BASELINE_MODEL="${BASELINE_MODEL:-qwen2.5-coder:7b-instruct}"
 OLLAMA_HOST_URL="${OLLAMA_HOST_URL:-http://localhost:11434}"
 OLLAMA_READY_TIMEOUT_SECONDS="${OLLAMA_READY_TIMEOUT_SECONDS:-120}"
@@ -57,7 +57,6 @@ echo "Workspace : ${OLLAMA_WORKSPACE}"
 
 docker run -d \
   --name "$OLLAMA_CONTAINER_NAME" \
-  --gpus=all \
   --rm \
   -p 11434:11434 \
   -v "${OLLAMA_WORKSPACE}:/root/.ollama" \

@@ -11,7 +11,7 @@ PROMPT_SETTING="few_shot"
 BACKEND="ollama"
 
 BASELINE_MODEL="${BASELINE_MODEL:-qwen2.5-coder:7b-instruct}"
-POSTGEN_MODEL="${POSTGEN_MODEL:-llama3.1:8b-instruct-fp16}"
+POSTGEN_MODEL="${POSTGEN_MODEL:-llama3.1:8b}"
 TEMPERATURE="${TEMPERATURE:-0}"
 NUM_CTX="${NUM_CTX:-8192}"
 TIMEOUT="${TIMEOUT:-300}"
@@ -22,7 +22,7 @@ VERIFY_NUM_PREDICT="${VERIFY_NUM_PREDICT:-1024}"
 REPAIR_NUM_PREDICT="${REPAIR_NUM_PREDICT:-768}"
 REFINE_NUM_PREDICT="${REFINE_NUM_PREDICT:-768}"
 MAX_PROBES="${MAX_PROBES:-7}"
-WORKERS="${WORKERS:-4}"
+WORKERS="4"
 
 DATA_PATH="data/booksql/booksql_normalized.jsonl"
 DB_PATH="data/booksql/accounting.sqlite"
@@ -78,7 +78,7 @@ run_cmd() {
 
 check_ollama_model() {
   local model_name="$1"
-  python - "$model_name" <<'PY'
+  python3 - "$model_name" <<'PY'
 import json
 import sys
 import urllib.request
@@ -101,7 +101,7 @@ if model_name not in names:
 PY
 }
 
-require_command python
+require_command python3
 require_command tee
 require_file "$DATA_PATH"
 require_file "$DB_PATH"
@@ -116,7 +116,7 @@ if [[ -n "${LIMIT:-}" ]]; then
   echo "LIMIT enabled: ${LIMIT}"
 fi
 
-python - "$DEBUG_DIR/run_metadata.json" <<PY
+python3 - "$DEBUG_DIR/run_metadata.json" <<PY
 import json
 import pathlib
 import subprocess
@@ -169,7 +169,7 @@ BASELINE_ASA_JSON="${BASELINE_DIR}/qwen_few_shot_validation_asa_metrics.json"
 BASELINE_ASA_MD="${BASELINE_DIR}/qwen_few_shot_validation_asa_metrics.md"
 BASELINE_ASA_ROWS="${BASELINE_DIR}/qwen_few_shot_validation_asa_rows.jsonl"
 
-run_cmd python -m src.baseline.baseline_runner \
+run_cmd python3 -m src.baseline.baseline_runner \
   --model qwen \
   --backend ollama \
   --ollama-model-name "$BASELINE_MODEL" \
@@ -184,14 +184,14 @@ run_cmd python -m src.baseline.baseline_runner \
   --output-path "$BASELINE_JSONL" \
   "${LIMIT_ARGS[@]}"
 
-run_cmd python -m src.eval.evaluate_baseline_sql \
+run_cmd python3 -m src.eval.evaluate_baseline_sql \
   --input-jsonl "$BASELINE_JSONL" \
   --output-jsonl "$BASELINE_EVAL_JSONL" \
   --metrics-json "$BASELINE_METRICS_JSON" \
   --db-path "$DB_PATH" \
   --workers "$WORKERS"
 
-run_cmd python -m src.eval.evaluate_asa \
+run_cmd python3 -m src.eval.evaluate_asa \
   --before-jsonl "$BASELINE_EVAL_JSONL" \
   --schema-path "$SCHEMA_JSON" \
   --output-json "$BASELINE_ASA_JSON" \
@@ -213,7 +213,7 @@ run_generic_refine() {
   local asa_md="${out_dir}/${key}_asa_metrics.md"
   local asa_rows="${out_dir}/${key}_asa_rows.jsonl"
 
-  run_cmd python -m "$module" \
+  run_cmd python3 -m "$module" \
     --input-path "$BASELINE_EVAL_JSONL" \
     --output-path "$refine_jsonl" \
     --schema-path "$SCHEMA_TXT" \
@@ -223,7 +223,7 @@ run_generic_refine() {
     --num-predict "$REFINE_NUM_PREDICT" \
     --timeout "$TIMEOUT"
 
-  run_cmd python -m src.eval.evaluate_final_sql \
+  run_cmd python3 -m src.eval.evaluate_final_sql \
     --input-jsonl "$refine_jsonl" \
     --output-jsonl "$final_eval_jsonl" \
     --metrics-json "$final_metrics_json" \
@@ -232,7 +232,7 @@ run_generic_refine() {
     --db-path "$DB_PATH" \
     --workers "$WORKERS"
 
-  run_cmd python -m src.eval.evaluate_asa \
+  run_cmd python3 -m src.eval.evaluate_asa \
     --before-jsonl "$BASELINE_EVAL_JSONL" \
     --after-jsonl "$final_eval_jsonl" \
     --schema-path "$SCHEMA_JSON" \
@@ -245,7 +245,7 @@ run_generic_refine "generic_self_refine" "src.baseline.generic_refine.self_refin
 run_generic_refine "generic_execution_guided_refine" "src.baseline.generic_refine.execution_guided"
 
 INTENT_NL_ONLY_JSONL="${INTENT_DIR}/intents_nl_only.jsonl"
-run_cmd python scripts/precompute_finverisql_intents.py \
+run_cmd python3 scripts/precompute_finverisql_intents.py \
   --input-path "$BASELINE_EVAL_JSONL" \
   --output-path "$INTENT_NL_ONLY_JSONL" \
   --schema-path "$SCHEMA_JSON" \
@@ -283,7 +283,7 @@ run_finverisql_variant() {
     intent_cache_args=(--intent-cache-path "$INTENT_NL_ONLY_JSONL" --require-intent-cache)
   fi
 
-  run_cmd python scripts/run_finverisql_verify.py \
+  run_cmd python3 scripts/run_finverisql_verify.py \
     --input-path "$BASELINE_EVAL_JSONL" \
     --output-path "$verify_jsonl" \
     --repair-output-path "$repair_queue_jsonl" \
@@ -300,11 +300,11 @@ run_finverisql_variant() {
     --timeout "$TIMEOUT" \
     "${intent_cache_args[@]}"
 
-  run_cmd python -m src.eval.evaluate_verifier_diagnostics \
+  run_cmd python3 -m src.eval.evaluate_verifier_diagnostics \
     --input-path "$verify_jsonl" \
     --output-md "$diagnostics_md"
 
-  run_cmd python scripts/run_finverisql_repair.py \
+  run_cmd python3 scripts/run_finverisql_repair.py \
     --input-path "$verify_jsonl" \
     --output-path "$repair_jsonl" \
     --schema-path "$SCHEMA_JSON" \
@@ -322,7 +322,7 @@ run_finverisql_variant() {
     --num-predict "$REPAIR_NUM_PREDICT" \
     --timeout "$TIMEOUT"
 
-  run_cmd python -m src.eval.evaluate_final_sql \
+  run_cmd python3 -m src.eval.evaluate_final_sql \
     --input-jsonl "$repair_jsonl" \
     --output-jsonl "$final_eval_jsonl" \
     --metrics-json "$final_metrics_json" \
@@ -331,7 +331,7 @@ run_finverisql_variant() {
     --db-path "$DB_PATH" \
     --workers "$WORKERS"
 
-  run_cmd python -m src.eval.evaluate_asa \
+  run_cmd python3 -m src.eval.evaluate_asa \
     --before-jsonl "$BASELINE_EVAL_JSONL" \
     --after-jsonl "$final_eval_jsonl" \
     --schema-path "$SCHEMA_JSON" \
@@ -424,7 +424,7 @@ manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\
 print(f"Wrote run manifest to {manifest_path}")
 PY
 
-run_cmd python scripts/build_publication_tables.py \
+run_cmd python3 scripts/build_publication_tables.py \
   --manifest "$MANIFEST_JSON" \
   --publication-dir "$PUB_DIR" \
   --debug-dir "$TABLE_DEBUG_DIR"

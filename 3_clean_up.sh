@@ -3,7 +3,7 @@ set -euo pipefail
 
 OLLAMA_CONTAINER_NAME="${OLLAMA_CONTAINER_NAME:-ephemeral-ollama}"
 OLLAMA_IMAGE="${OLLAMA_IMAGE:-ollama/ollama}"
-OLLAMA_WORKSPACE="${OLLAMA_WORKSPACE:-/tmp_deacon/finveri_ollama_workspace}"
+OLLAMA_WORKSPACE="${OLLAMA_WORKSPACE:-/$HOME/finveri_ollama_workspace}"
 
 require_command() {
   local name="$1"
