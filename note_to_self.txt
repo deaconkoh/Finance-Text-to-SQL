@@ -60,3 +60,10 @@ deactivate
 # Escape the project directory and vaporize your temporary code folder entirely
 cd /tmp
 rm -rf /tmp/deacon_project
+
+
+
+-----
+Steps to train SFT/RL & Run inference
+chmod +x 4_run_repair_ablations.sh
+./4_run_repair_ablations.sh
