@@ -4,3 +4,11 @@ pyyaml
 tqdm
 pytest
 sqlglot
+torch
+transformers
+accelerate
+peft
+trl
+bitsandbytes
+safetensors
+sentencepiece

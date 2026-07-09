@@ -809,6 +809,30 @@ A negative value means removing the component hurts final EX. A positive value m
 
 ---
 
+### **Isolated Repair Strategy Comparison**
+
+This comparison isolates the repair mechanism while holding verifier outputs fixed. The goal is not to prove that in-context prompting is better than SFT or RL. Instead, it tests whether FinVeriSQL can provide lightweight edit-locality control as a post-generation layer, and whether that control can complement or substitute for learned repair policies under the same confirmed mismatch evidence.
+
+All repair strategies receive the same fixed verifier output: the same rejected rows, mismatch types, failed evidence, repair hints, intent representations, and compact SQL profiles. The verifier is not rerun and the set of repair candidates is held constant. Only the method used to produce the repaired SQL changes.
+
+| Repair Strategy             | Purpose                                                                                                                                                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **FinVeriSQL ICL repair**   | Uses FinVeriSQL's repair model with scope constraints at repair time. This represents a lightweight post-generation repair mechanism with no learned task-specific adapter.                                                          |
+| **SFT Llama-3.1-8B repair** | Starts from the same Llama-3.1-8B base model and is supervised using LoRa on train-split repair examples using corrected SQL targets. This tests whether learned repair behavior improves correction while preserving edit locality. |
+| **RL Llama-3.1-8B repair**  | Starts from the SFT repairer and is further optimized with rewards aligned to EX correction, ASA, and corruption avoidance. This tests whether explicit optimization improves the repair tradeoff under fixed verifier routing.      |
+
+Recommended isolated repair strategy table:
+
+| Repair Strategy       | Correction Rate | Corruption Rate | ASA |
+| --------------------- | --------------- | --------------- | --- |
+| Prompted Llama-3.1-8B | ...             | ...             | ... |
+| SFT Llama-3.1-8B      | ...             | ...             | ... |
+| RL Llama-3.1-8B       | ...             | ...             | ... |
+
+This comparison supports the model-agnostic claim of FinVeriSQL: because verification and repair happen after SQL generation, the same fixed verifier evidence can be paired with different repair producers. If prompted repair is competitive, it suggests FinVeriSQL can offer a low-overhead alternative to learned edit-locality control. If SFT or RL improves the tradeoff, it shows that learned repairers can be plugged into the same post-generation interface without changing the verifier or baseline SQL generator.
+
+---
+
 ## Error Analysis
 
 ASA/FCR Group Membership Audit
