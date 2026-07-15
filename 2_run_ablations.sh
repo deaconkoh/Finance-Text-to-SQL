@@ -36,6 +36,7 @@ MAX_PROBES="${MAX_PROBES:-7}"
 WORKERS="4"
 GENERIC_REFINE_WORKERS="${GENERIC_REFINE_WORKERS:-2}"
 RUN_REPAIR_STRATEGY_ABLATION="${RUN_REPAIR_STRATEGY_ABLATION:-1}"
+FORCE_BASELINE_EVALUATION="${FORCE_BASELINE_EVALUATION:-0}"
 SFT_ADAPTER_PATH="${SFT_ADAPTER_PATH:-}"
 RL_ADAPTER_PATH="${RL_ADAPTER_PATH:-}"
 SFT_ADAPTER_URL="${SFT_ADAPTER_URL:-}"
@@ -290,6 +291,8 @@ BASELINE_METRICS_JSON="${BASELINE_DIR}/qwen_few_shot_validation_metrics.json"
 BASELINE_ASA_JSON="${BASELINE_DIR}/qwen_few_shot_validation_asa_metrics.json"
 BASELINE_ASA_MD="${BASELINE_DIR}/qwen_few_shot_validation_asa_metrics.md"
 BASELINE_ASA_ROWS="${BASELINE_DIR}/qwen_few_shot_validation_asa_rows.jsonl"
+BASELINE_EVAL_MANIFEST="${BASELINE_DIR}/qwen_few_shot_validation_evaluation_manifest.json"
+BASELINE_ASA_MANIFEST="${BASELINE_DIR}/qwen_few_shot_validation_asa_manifest.json"
 
 run_cmd python3 -m src.baseline.baseline_runner \
   --model qwen \
@@ -307,19 +310,65 @@ run_cmd python3 -m src.baseline.baseline_runner \
   --output-path "$BASELINE_JSONL" \
   "${LIMIT_ARGS[@]}"
 
-run_cmd python3 -m src.eval.evaluate_baseline_sql \
+if [[ "$FORCE_BASELINE_EVALUATION" != "1" ]] && python3 scripts/dev/baseline_evaluation_cache.py \
+  --stage evaluation \
   --input-jsonl "$BASELINE_JSONL" \
+  --db-path "$DB_PATH" \
+  --schema-path "$SCHEMA_JSON" \
+  --manifest "$BASELINE_EVAL_MANIFEST" \
   --output-jsonl "$BASELINE_EVAL_JSONL" \
   --metrics-json "$BASELINE_METRICS_JSON" \
-  --db-path "$DB_PATH" \
-  --workers "$WORKERS"
+  --workers "$WORKERS"; then
+  echo "Reusing cached baseline SQL evaluation."
+else
+  run_cmd python3 -m src.eval.evaluate_baseline_sql \
+    --input-jsonl "$BASELINE_JSONL" \
+    --output-jsonl "$BASELINE_EVAL_JSONL" \
+    --metrics-json "$BASELINE_METRICS_JSON" \
+    --db-path "$DB_PATH" \
+    --workers "$WORKERS"
+  run_cmd python3 scripts/dev/baseline_evaluation_cache.py \
+    --stage evaluation \
+    --input-jsonl "$BASELINE_JSONL" \
+    --db-path "$DB_PATH" \
+    --schema-path "$SCHEMA_JSON" \
+    --manifest "$BASELINE_EVAL_MANIFEST" \
+    --output-jsonl "$BASELINE_EVAL_JSONL" \
+    --metrics-json "$BASELINE_METRICS_JSON" \
+    --workers "$WORKERS"
+fi
 
-run_cmd python3 -m src.eval.evaluate_asa \
-  --before-jsonl "$BASELINE_EVAL_JSONL" \
+if [[ "$FORCE_BASELINE_EVALUATION" != "1" ]] && python3 scripts/dev/baseline_evaluation_cache.py \
+  --stage asa \
+  --input-jsonl "$BASELINE_EVAL_JSONL" \
+  --db-path "$DB_PATH" \
   --schema-path "$SCHEMA_JSON" \
-  --output-json "$BASELINE_ASA_JSON" \
-  --output-md "$BASELINE_ASA_MD" \
-  --row-output-jsonl "$BASELINE_ASA_ROWS"
+  --manifest "$BASELINE_ASA_MANIFEST" \
+  --output-jsonl "$BASELINE_ASA_ROWS" \
+  --metrics-json "$BASELINE_ASA_JSON" \
+  --metrics-md "$BASELINE_ASA_MD" \
+  --row-output-jsonl "$BASELINE_ASA_ROWS" \
+  --workers "$WORKERS"; then
+  echo "Reusing cached baseline ASA evaluation."
+else
+  run_cmd python3 -m src.eval.evaluate_asa \
+    --before-jsonl "$BASELINE_EVAL_JSONL" \
+    --schema-path "$SCHEMA_JSON" \
+    --output-json "$BASELINE_ASA_JSON" \
+    --output-md "$BASELINE_ASA_MD" \
+    --row-output-jsonl "$BASELINE_ASA_ROWS"
+  run_cmd python3 scripts/dev/baseline_evaluation_cache.py \
+    --stage asa \
+    --input-jsonl "$BASELINE_EVAL_JSONL" \
+    --db-path "$DB_PATH" \
+    --schema-path "$SCHEMA_JSON" \
+    --manifest "$BASELINE_ASA_MANIFEST" \
+    --output-jsonl "$BASELINE_ASA_ROWS" \
+    --metrics-json "$BASELINE_ASA_JSON" \
+    --metrics-md "$BASELINE_ASA_MD" \
+    --row-output-jsonl "$BASELINE_ASA_ROWS" \
+    --workers "$WORKERS"
+fi
 
 run_generic_refine() {
   local key="$1"
