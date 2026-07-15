@@ -87,6 +87,7 @@ def test_qwen_ollama_backend_does_not_import_mlx(monkeypatch) -> None:
         "num_predict": 99,
         "timeout": 45,
         "format_json": False,
+        "seed": None,
     }
     assert metadata["model_name"] == "qwen2.5-coder:7b"
     assert metadata["inference_backend"] == "ollama"

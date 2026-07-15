@@ -34,6 +34,7 @@ def build_ollama_generate_fn(
     timeout: int = 300,
     format_json: bool = True,
     think: bool | None = None,
+    seed: int | None = None,
 ):
     """Create an Ollama chat generation callable.
 
@@ -70,6 +71,9 @@ def build_ollama_generate_fn(
                 "num_predict": num_predict,
             },
         }
+
+        if seed is not None:
+            payload["options"]["seed"] = seed
 
         if format_json:
             payload["format"] = "json"
@@ -229,6 +233,7 @@ def build_verifier_generate_fn(
     temperature: float = 0.0,
     num_predict: int = 768,
     timeout: int = 300,
+    seed: int | None = None,
 ):
     """Dispatch verifier generation to the configured backend.
 
@@ -266,6 +271,7 @@ def build_verifier_generate_fn(
             timeout=timeout,
             format_json=True,
             think=False,
+            seed=seed,
         )
 
     raise ValueError(

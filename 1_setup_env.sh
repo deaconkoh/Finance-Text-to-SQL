@@ -9,6 +9,7 @@ POSTGEN_MODEL="${POSTGEN_MODEL:-llama3.1:8b}"
 BASELINE_MODEL="${BASELINE_MODEL:-qwen2.5-coder:7b-instruct}"
 OLLAMA_HOST_URL="${OLLAMA_HOST_URL:-http://localhost:11434}"
 OLLAMA_READY_TIMEOUT_SECONDS="${OLLAMA_READY_TIMEOUT_SECONDS:-120}"
+OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-4}"
 
 require_command() {
   local name="$1"
@@ -42,6 +43,11 @@ wait_for_ollama() {
 require_command docker
 require_command curl
 
+if ! docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi >/dev/null 2>&1; then
+  echo "Docker GPU access is unavailable. Install/configure the NVIDIA Container Toolkit, then verify 'docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi'." >&2
+  exit 1
+fi
+
 if container_exists; then
   echo "Container '${OLLAMA_CONTAINER_NAME}' already exists." >&2
   echo "Run ./3_clean_up.sh first, then retry setup." >&2
@@ -54,11 +60,14 @@ echo "Starting Ollama Docker container..."
 echo "Container : ${OLLAMA_CONTAINER_NAME}"
 echo "Image     : ${OLLAMA_IMAGE}"
 echo "Workspace : ${OLLAMA_WORKSPACE}"
+echo "Parallel requests : ${OLLAMA_NUM_PARALLEL}"
 
 docker run -d \
   --name "$OLLAMA_CONTAINER_NAME" \
   --rm \
+  --gpus all \
   -p 11434:11434 \
+  -e "OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL}" \
   -v "${OLLAMA_WORKSPACE}:/root/.ollama" \
   "$OLLAMA_IMAGE"
 

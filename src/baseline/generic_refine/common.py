@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -385,6 +386,12 @@ def build_base_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--num-predict", type=int, default=768)
     parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Maximum concurrent Ollama refinement requests. Defaults to serial execution.",
+    )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--overwrite", action="store_true", help="Disable resume skipping.")
     return parser
@@ -463,6 +470,10 @@ def run_refine_jsonl(
         from utils.inference_utils import build_verifier_generate_fn
 
     rows = read_jsonl(args.input_path)
+    if args.workers <= 0:
+        raise ValueError("--workers must be >= 1.")
+    if args.workers > 1 and args.backend != "ollama":
+        raise ValueError("--workers > 1 is supported only with the Ollama backend.")
     if args.limit is not None:
         rows = rows[: args.limit]
 
@@ -493,8 +504,11 @@ def run_refine_jsonl(
     )
 
     counts = {"attempted": 0, "skipped": 0, "changed": 0, "failed": 0}
+    ready_outputs: dict[int, dict[str, Any]] = {}
+    pending_requests: list[tuple[int, dict[str, Any], GenericRefineRequest]] = []
+    completed_row_indexes: set[int] = set()
 
-    for row in rows:
+    for row_index, row in enumerate(rows):
         run_key = get_refine_run_key(
             row=row,
             repair_mode=repair_mode,
@@ -502,6 +516,7 @@ def run_refine_jsonl(
             context_hash=context_hash,
         )
         if not args.overwrite and run_key in completed_keys:
+            completed_row_indexes.add(row_index)
             continue
 
         skip_reason = None
@@ -514,18 +529,15 @@ def run_refine_jsonl(
 
         if skip_reason:
             counts["skipped"] += 1
-            append_jsonl(
-                args.output_path,
-                build_output_row(
-                    source_row=row,
-                    request=None,
-                    result=None,
-                    repair_mode=repair_mode,
-                    model_metadata=model_metadata,
-                    context_hash=context_hash,
-                    status="skipped",
-                    skip_reason=skip_reason,
-                ),
+            ready_outputs[row_index] = build_output_row(
+                source_row=row,
+                request=None,
+                result=None,
+                repair_mode=repair_mode,
+                model_metadata=model_metadata,
+                context_hash=context_hash,
+                status="skipped",
+                skip_reason=skip_reason,
             )
             continue
 
@@ -534,30 +546,53 @@ def run_refine_jsonl(
             default_schema_text=default_schema_text,
             execution_feedback=execution_feedback_builder(row),
         )
-        result = run_refine_request(
+        pending_requests.append((row_index, row, request))
+
+    print(f"Generic refinement workers: {args.workers}")
+    next_row_index = 0
+
+    def flush_ready_outputs() -> None:
+        nonlocal next_row_index
+        while next_row_index in completed_row_indexes or next_row_index in ready_outputs:
+            if next_row_index in ready_outputs:
+                append_jsonl(args.output_path, ready_outputs.pop(next_row_index))
+            next_row_index += 1
+
+    def run_one(request: GenericRefineRequest) -> GenericRefineResult:
+        return run_refine_request(
             request=request,
             llm_generate_fn=generate_fn,
             prompt_builder=prompt_builder,
         )
-        counts["attempted"] += 1
-        if result.status == "failed":
-            counts["failed"] += 1
-        if result.repaired_sql:
-            counts["changed"] += 1
 
-        append_jsonl(
-            args.output_path,
-            build_output_row(
-                source_row=row,
-                request=request,
-                result=result,
-                repair_mode=repair_mode,
-                model_metadata=model_metadata,
-                context_hash=context_hash,
-                status="success",
-                skip_reason=None,
-            ),
-        )
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        futures: dict[Future, tuple[int, dict[str, Any], GenericRefineRequest]] = {
+            executor.submit(run_one, request): (row_index, row, request)
+            for row_index, row, request in pending_requests
+        }
+        while futures:
+            done, _ = wait(futures, return_when=FIRST_COMPLETED)
+            for future in done:
+                row_index, row, request = futures.pop(future)
+                result = future.result()
+                counts["attempted"] += 1
+                if result.status == "failed":
+                    counts["failed"] += 1
+                if result.repaired_sql:
+                    counts["changed"] += 1
+                ready_outputs[row_index] = build_output_row(
+                    source_row=row,
+                    request=request,
+                    result=result,
+                    repair_mode=repair_mode,
+                    model_metadata=model_metadata,
+                    context_hash=context_hash,
+                    status="success",
+                    skip_reason=None,
+                )
+            flush_ready_outputs()
+
+    flush_ready_outputs()
 
     print(f"Saved generic refinement outputs to: {args.output_path}")
     print(

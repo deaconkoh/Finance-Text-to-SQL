@@ -316,6 +316,11 @@ def parse_args() -> argparse.Namespace:
             "Useful for running a small validation sample."
         ),
     )
+    parser.add_argument(
+        "--allow-missing-gold-sql",
+        action="store_true",
+        help="Allow question-only inference rows, intended for the official hidden test set.",
+    )
     
     parser.add_argument(
         "--limit",
@@ -385,6 +390,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.0,
         help="Sampling temperature for Ollama-backed Qwen baseline generation.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Optional deterministic seed for backends that support it.",
     )
     parser.add_argument(
         "--timeout",
@@ -525,6 +536,7 @@ def build_qwen_runner(
             num_predict=args.max_new_tokens,
             timeout=args.timeout,
             format_json=False,
+            seed=getattr(args, "seed", None),
         )
 
         return QWEN_GENERATOR, generate_fn, {
@@ -533,6 +545,7 @@ def build_qwen_runner(
             "max_new_tokens": args.max_new_tokens,
             "temperature": args.temperature,
             "timeout": args.timeout,
+            "seed": getattr(args, "seed", None),
         }
 
     if args.backend != "mlx-lm":
@@ -653,6 +666,7 @@ def load_inference_records(args: argparse.Namespace) -> list[dict[str, Any]]:
         schema_path=args.schema_path,
         db_path=args.db_path,
         dataset_name=args.dataset_name,
+        allow_missing_gold_sql=getattr(args, "allow_missing_gold_sql", False),
     )
 
     if not records:

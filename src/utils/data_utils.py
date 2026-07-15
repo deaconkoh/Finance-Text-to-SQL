@@ -129,6 +129,25 @@ def validate_normalized_row(row: dict[str, Any], row_index: int) -> None:
         )
 
 
+def validate_inference_row(
+    row: dict[str, Any],
+    row_index: int,
+    allow_missing_gold_sql: bool,
+) -> None:
+    """Validate a prepared row for inference, optionally without a gold SQL."""
+    if allow_missing_gold_sql:
+        required = tuple(column for column in BOOKSQL_NORMALIZED_COLUMNS if column != "gold_sql")
+        missing = [column for column in required if column not in row]
+        if missing:
+            raise BookSQLConfigError(
+                f"BookSQL row {row_index} is missing required inference fields: "
+                f"{missing}. Available fields: {sorted(row.keys())}"
+            )
+        return
+
+    validate_normalized_row(row, row_index)
+
+
 def load_booksql_schema(schema_path: str | Path | None = None) -> str:
     """Load the prompt-ready BookSQL schema text.
 
@@ -281,6 +300,7 @@ def load_booksql_records(
     schema_path: str | Path | None = None,
     db_path: str | Path | None = None,
     dataset_name: str = BOOKSQL_DATASET_NAME,
+    allow_missing_gold_sql: bool = False,
 ) -> list[dict[str, Any]]:
     """Load prepared BookSQL records and attach the schema for prompting.
 
@@ -324,7 +344,7 @@ def load_booksql_records(
     records: list[dict[str, Any]] = []
 
     for row_index, row in enumerate(rows):
-        validate_normalized_row(row, row_index)
+        validate_inference_row(row, row_index, allow_missing_gold_sql)
 
         row_split = normalize_split(row["split"])
 
@@ -336,7 +356,7 @@ def load_booksql_records(
                 "question_id": row["question_id"],
                 "db_id": row["db_id"],
                 "question": row["question"],
-                "gold_sql": row["gold_sql"],
+                "gold_sql": row.get("gold_sql"),
                 "schema": schema,
                 "level": row["level"],
                 "split": row_split,

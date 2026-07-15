@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
 import sys
+import threading
+import time
 from pathlib import Path
+from types import SimpleNamespace
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +25,7 @@ from src.baseline.generic_refine.common import (
     parse_refine_json,
     run_refine_request,
     stable_context_hash,
+    run_refine_jsonl,
 )
 from src.baseline.generic_refine.self_refine import (
     REPAIR_MODE as SELF_REFINE_MODE,
@@ -241,3 +246,60 @@ def test_resume_key_separates_refine_modes() -> None:
     )
 
     assert self_key != execution_key
+
+
+def test_refinement_workers_preserve_order_and_resume(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "input.jsonl"
+    output = tmp_path / "output.jsonl"
+    schema = tmp_path / "schema.txt"
+    schema.write_text("Table invoices(id, amount)", encoding="utf-8")
+    rows = []
+    for index in range(3):
+        row = make_evaluated_row()
+        row["question_id"] = f"q{index}"
+        rows.append(row)
+    source.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+    active = 0
+    maximum_active = 0
+    lock = threading.Lock()
+
+    def generate(prompt: str) -> str:
+        nonlocal active, maximum_active
+        with lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        try:
+            if "Question ID:\nq0" in prompt:
+                time.sleep(0.04)
+            return '{"changed": false, "revised_sql": "SELECT COUNT(*) FROM invoices;", "edit_summary": null, "confidence": "high"}'
+        finally:
+            with lock:
+                active -= 1
+
+    import src.utils.inference_utils as inference_utils
+    monkeypatch.setattr(inference_utils, "build_verifier_generate_fn", lambda **_kwargs: generate)
+    args = SimpleNamespace(
+        input_path=str(source), output_path=str(output), schema_path=str(schema),
+        model_name="test-model", backend="ollama", temperature=0.0,
+        num_predict=32, timeout=10, limit=None, overwrite=False, workers=2,
+    )
+
+    run_refine_jsonl(
+        args=args,
+        repair_mode=SELF_REFINE_MODE,
+        prompt_builder=build_generic_self_refine_prompt,
+        execution_feedback_builder=lambda _row: None,
+    )
+
+    written = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert [row["question_id"] for row in written] == ["q0", "q1", "q2"]
+    assert maximum_active == 2
+
+    run_refine_jsonl(
+        args=args,
+        repair_mode=SELF_REFINE_MODE,
+        prompt_builder=build_generic_self_refine_prompt,
+        execution_feedback_builder=lambda _row: None,
+    )
+    assert len(output.read_text(encoding="utf-8").splitlines()) == 3

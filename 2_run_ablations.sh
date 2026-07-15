@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+MODE="labeled"
+if [[ "${1:-}" == "--mode" ]]; then
+  MODE="${2:-}"
+  shift 2
+fi
+if [[ $# -ne 0 || ! "$MODE" =~ ^(labeled|official-test|all)$ ]]; then
+  echo "Usage: $0 [--mode labeled|official-test|all]" >&2
+  exit 2
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 cd "$PROJECT_ROOT"
@@ -13,6 +23,7 @@ BACKEND="ollama"
 BASELINE_MODEL="${BASELINE_MODEL:-qwen2.5-coder:7b-instruct}"
 POSTGEN_MODEL="${POSTGEN_MODEL:-llama3.1:8b}"
 TEMPERATURE="${TEMPERATURE:-0}"
+SEED="${SEED:-42}"
 NUM_CTX="${NUM_CTX:-8192}"
 TIMEOUT="${TIMEOUT:-300}"
 
@@ -23,6 +34,93 @@ REPAIR_NUM_PREDICT="${REPAIR_NUM_PREDICT:-768}"
 REFINE_NUM_PREDICT="${REFINE_NUM_PREDICT:-768}"
 MAX_PROBES="${MAX_PROBES:-7}"
 WORKERS="4"
+GENERIC_REFINE_WORKERS="${GENERIC_REFINE_WORKERS:-2}"
+RUN_REPAIR_STRATEGY_ABLATION="${RUN_REPAIR_STRATEGY_ABLATION:-1}"
+SFT_ADAPTER_PATH="${SFT_ADAPTER_PATH:-}"
+RL_ADAPTER_PATH="${RL_ADAPTER_PATH:-}"
+SFT_ADAPTER_URL="${SFT_ADAPTER_URL:-}"
+RL_ADAPTER_URL="${RL_ADAPTER_URL:-}"
+SFT_ADAPTER_SHA256="${SFT_ADAPTER_SHA256:-}"
+RL_ADAPTER_SHA256="${RL_ADAPTER_SHA256:-}"
+
+check_ollama_model() {
+  local model_name="$1"
+  python3 - "$model_name" <<'PY'
+import json
+import sys
+import urllib.request
+
+with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=10) as response:
+    payload = json.loads(response.read().decode("utf-8"))
+names = {str(item.get("name")) for item in payload.get("models", []) if isinstance(item, dict)}
+if sys.argv[1] not in names:
+    raise SystemExit(f"Ollama model '{sys.argv[1]}' is not available.")
+PY
+}
+
+run_official_test() {
+  local test_dir="${OUT_ROOT}/official_test"
+  local test_input="${test_dir}/booksql_official_test.jsonl"
+  local baseline_jsonl="${test_dir}/qwen_few_shot_test.jsonl"
+  local routed_jsonl="${test_dir}/routed_candidates.jsonl"
+  local intent_jsonl="${test_dir}/intents_nl_only.jsonl"
+  local verify_jsonl="${test_dir}/full_verify.jsonl"
+  local repair_queue_jsonl="${test_dir}/full_repair_queue.jsonl"
+  local skipped_jsonl="${test_dir}/full_skipped.jsonl"
+  local repair_jsonl="${test_dir}/full_repairs.jsonl"
+
+  mkdir -p "$test_dir"
+  command -v python3 >/dev/null 2>&1 || { echo "Required command not found: python3" >&2; exit 1; }
+  command -v tee >/dev/null 2>&1 || { echo "Required command not found: tee" >&2; exit 1; }
+  [[ -f "$DB_PATH" && -f "$SCHEMA_TXT" && -f "$SCHEMA_JSON" && -f "$DATA_PATH" ]] || { echo "BookSQL train/schema/database assets are required." >&2; exit 1; }
+  check_ollama_model "$BASELINE_MODEL"
+  check_ollama_model "$POSTGEN_MODEL"
+
+  run_cmd python3 scripts/prepare_official_booksql_test.py --output-path "$test_input"
+  run_cmd python3 -m src.baseline.baseline_runner \
+    --model qwen --backend ollama --ollama-model-name "$BASELINE_MODEL" \
+    --temperature "$TEMPERATURE" --seed "$SEED" --timeout "$TIMEOUT" \
+    --max-new-tokens "$BASELINE_MAX_NEW_TOKENS" --split test \
+    --prompt-setting "$PROMPT_SETTING" --allow-missing-gold-sql \
+    --data-path "$test_input" --few-shot-data-path "$DATA_PATH" \
+    --db-path "$DB_PATH" --schema-path "$SCHEMA_TXT" --output-path "$baseline_jsonl"
+  run_cmd python3 scripts/prepare_official_test_candidates.py \
+    --input-jsonl "$baseline_jsonl" --output-jsonl "$routed_jsonl" --db-path "$DB_PATH"
+  run_cmd python3 scripts/precompute_finverisql_intents.py \
+    --input-path "$routed_jsonl" --output-path "$intent_jsonl" --schema-path "$SCHEMA_JSON" \
+    --intent-mode nl_only --backend ollama --model-name "$POSTGEN_MODEL" \
+    --temperature "$TEMPERATURE" --num-predict "$INTENT_NUM_PREDICT" --timeout "$TIMEOUT"
+  run_cmd python3 scripts/run_finverisql_verify.py \
+    --input-path "$routed_jsonl" --output-path "$verify_jsonl" \
+    --repair-output-path "$repair_queue_jsonl" --skipped-output-path "$skipped_jsonl" \
+    --schema-path "$SCHEMA_JSON" --profile-mode compact --intent-mode nl_only \
+    --probing-mode probe --max-probes "$MAX_PROBES" --backend ollama --model-name "$POSTGEN_MODEL" \
+    --temperature "$TEMPERATURE" --num-predict "$VERIFY_NUM_PREDICT" --timeout "$TIMEOUT" \
+    --intent-cache-path "$intent_jsonl" --require-intent-cache
+  run_cmd python3 scripts/run_finverisql_repair.py \
+    --input-path "$verify_jsonl" --output-path "$repair_jsonl" --schema-path "$SCHEMA_JSON" \
+    --semantic-repair-framework specialized_chain --intent-mode nl_only \
+    --intent-cache-path "$intent_jsonl" --require-intent-cache \
+    --repair-backend ollama --repair-model-name "$POSTGEN_MODEL" \
+    --verifier-backend ollama --verifier-model-name "$POSTGEN_MODEL" \
+    --profile-mode compact --probing-mode probe --max-probes "$MAX_PROBES" \
+    --temperature "$TEMPERATURE" --num-predict "$REPAIR_NUM_PREDICT" --timeout "$TIMEOUT"
+  run_cmd python3 scripts/export_official_test_submission.py \
+    --input-jsonl "$repair_jsonl" --submission-csv "$test_dir/submission.csv" \
+    --predictions-jsonl "$test_dir/final_predictions.jsonl" \
+    --table-md "$test_dir/official_test_table.md" --summary-json "$test_dir/official_test_summary.json"
+}
+
+if [[ "$MODE" == "official-test" ]]; then
+  OUT_ROOT="data/outputs/finverisql/${RUN_ID}"
+  DB_PATH="data/booksql/accounting.sqlite"
+  SCHEMA_TXT="data/booksql/schema.txt"
+  SCHEMA_JSON="data/booksql/schema_annotations.json"
+  DATA_PATH="data/booksql/booksql_normalized.jsonl"
+  run_cmd() { echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] $*"; "$@"; }
+  run_official_test
+  exit 0
+fi
 
 DATA_PATH="data/booksql/booksql_normalized.jsonl"
 DB_PATH="data/booksql/accounting.sqlite"
@@ -140,6 +238,7 @@ metadata = {
     "baseline_model_name": "${BASELINE_MODEL}",
     "post_generation_model_name": "${POSTGEN_MODEL}",
     "temperature": float("${TEMPERATURE}"),
+    "seed": int("${SEED}"),
     "num_ctx": int("${NUM_CTX}"),
     "timeout": int("${TIMEOUT}"),
     "baseline_max_new_tokens": int("${BASELINE_MAX_NEW_TOKENS}"),
@@ -174,6 +273,7 @@ run_cmd python3 -m src.baseline.baseline_runner \
   --backend ollama \
   --ollama-model-name "$BASELINE_MODEL" \
   --temperature "$TEMPERATURE" \
+  --seed "$SEED" \
   --timeout "$TIMEOUT" \
   --max-new-tokens "$BASELINE_MAX_NEW_TOKENS" \
   --split "$SPLIT" \
@@ -221,7 +321,8 @@ run_generic_refine() {
     --backend ollama \
     --temperature "$TEMPERATURE" \
     --num-predict "$REFINE_NUM_PREDICT" \
-    --timeout "$TIMEOUT"
+    --timeout "$TIMEOUT" \
+    --workers "$GENERIC_REFINE_WORKERS"
 
   run_cmd python3 -m src.eval.evaluate_final_sql \
     --input-jsonl "$refine_jsonl" \
@@ -347,6 +448,57 @@ run_finverisql_variant "wo_compact_semantic_profile" "nl_only" "ast" "probe" "sp
 run_finverisql_variant "wo_scope_constraints" "nl_only" "compact" "probe" "generic_chain"
 run_finverisql_variant "wo_reverification_loop" "nl_only" "compact" "probe" "no_reverification"
 
+resolve_released_adapter() {
+  local name="$1"
+  local path="$2"
+  local url="$3"
+  local expected_sha="$4"
+  local download_dir="${OUT_ROOT}/released_adapters"
+  if [[ -n "$path" && -d "$path" ]]; then
+    printf '%s\n' "$path"
+    return
+  fi
+  if [[ -z "$url" || -z "$expected_sha" ]]; then
+    echo "${name} adapter is required. Set ${name}_ADAPTER_PATH or ${name}_ADAPTER_URL and ${name}_ADAPTER_SHA256." >&2
+    exit 1
+  fi
+  require_command curl
+  require_command shasum
+  require_command tar
+  mkdir -p "$download_dir"
+  local archive="${download_dir}/${name}.tar.gz"
+  local destination="${download_dir}/${name}"
+  if [[ ! -f "$archive" ]]; then
+    curl --fail --location --retry 3 --output "$archive" "$url"
+  fi
+  local actual_sha
+  actual_sha="$(shasum -a 256 "$archive" | awk '{print $1}')"
+  if [[ "$actual_sha" != "$expected_sha" ]]; then
+    echo "Checksum mismatch for ${name} adapter archive." >&2
+    exit 1
+  fi
+  if [[ ! -d "$destination" ]]; then
+    mkdir -p "$destination"
+    tar -xzf "$archive" -C "$destination" --strip-components=1
+  fi
+  printf '%s\n' "$destination"
+}
+
+if [[ "$RUN_REPAIR_STRATEGY_ABLATION" == "1" ]]; then
+  SFT_ADAPTER_PATH="$(resolve_released_adapter SFT "$SFT_ADAPTER_PATH" "$SFT_ADAPTER_URL" "$SFT_ADAPTER_SHA256")"
+  RL_ADAPTER_PATH="$(resolve_released_adapter RL "$RL_ADAPTER_PATH" "$RL_ADAPTER_URL" "$RL_ADAPTER_SHA256")"
+  REPAIR_ABLATION_DIR="${DEBUG_DIR}/repair_strategy_ablation/full_fixed_verifier"
+  run_cmd python3 scripts/run_repair_strategy_ablation.py \
+    --fixed-verifier-jsonl "${ABLATION_DIR}/full/full_verify.jsonl" \
+    --baseline-eval-jsonl "$BASELINE_EVAL_JSONL" \
+    --output-dir "$REPAIR_ABLATION_DIR" \
+    --prompt-model-name "$POSTGEN_MODEL" \
+    --sft-adapter-path "$SFT_ADAPTER_PATH" \
+    --rl-adapter-path "$RL_ADAPTER_PATH" \
+    --temperature "$TEMPERATURE" --num-predict "$REPAIR_NUM_PREDICT" \
+    --timeout "$TIMEOUT" --workers "$WORKERS"
+fi
+
 MANIFEST_JSON="${DEBUG_DIR}/run_manifest.json"
 python - "$MANIFEST_JSON" "$OUT_ROOT" <<'PY'
 import json
@@ -435,3 +587,7 @@ echo "Publication tables:"
 echo "  ${PUB_DIR}/main_comparison_table.md"
 echo "  ${PUB_DIR}/internal_ablation_table.md"
 echo "Debug artifacts: ${DEBUG_DIR}"
+
+if [[ "$MODE" == "all" ]]; then
+  run_official_test
+fi
