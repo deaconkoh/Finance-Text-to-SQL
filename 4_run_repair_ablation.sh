@@ -10,7 +10,7 @@ echo "Installing dependencies..."
 pip install -r requirements-linux.txt
 
 # IMPORTANT: Replace the placeholder below before running this script
-export RUN_ID="<your_completed_2_run_ablations_run_id>"
+export RUN_ID="eval_publication_20260706_154755"
 
 # 2. Set paths
 echo "Setting paths..."
