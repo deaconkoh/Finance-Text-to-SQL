@@ -174,6 +174,17 @@ run_cmd() {
   "$@"
 }
 
+run_cmd_logged() {
+  local log_path="$1"
+  shift
+  mkdir -p "$(dirname "$log_path")"
+  {
+    echo
+    echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] $*"
+    "$@"
+  } 2>&1 | tee -a "$log_path"
+}
+
 check_ollama_model() {
   local model_name="$1"
   python3 - "$model_name" <<'PY'
@@ -248,6 +259,7 @@ metadata = {
     "refine_num_predict": int("${REFINE_NUM_PREDICT}"),
     "max_probes": int("${MAX_PROBES}"),
     "workers": int("${WORKERS}"),
+    "generic_refine_workers": int("${GENERIC_REFINE_WORKERS}"),
     "limit": None if "${LIMIT:-}" == "" else int("${LIMIT:-0}"),
     "data_path": "${DATA_PATH}",
     "db_path": "${DB_PATH}",
@@ -257,8 +269,19 @@ metadata = {
     "git_status_short": git_output(["git", "status", "--short"]),
     "note": "num_ctx is recorded for metadata; current Python Ollama calls do not pass num_ctx.",
 }
-metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-print(f"Wrote run metadata to {metadata_path}")
+if metadata_path.exists():
+    resume_path = metadata_path.with_name(
+        f"run_resume_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
+    )
+    metadata["resumed_from_existing_run_metadata"] = str(metadata_path)
+    resume_path.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(f"Preserved existing run metadata and wrote resume metadata to {resume_path}")
+else:
+    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"Wrote run metadata to {metadata_path}")
 PY
 
 BASELINE_JSONL="${BASELINE_DIR}/qwen_few_shot_validation.jsonl"
@@ -312,8 +335,9 @@ run_generic_refine() {
   local asa_json="${out_dir}/${key}_asa_metrics.json"
   local asa_md="${out_dir}/${key}_asa_metrics.md"
   local asa_rows="${out_dir}/${key}_asa_rows.jsonl"
+  local stage_log="${out_dir}/run.log"
 
-  run_cmd python3 -m "$module" \
+  run_cmd_logged "$stage_log" python3 -m "$module" \
     --input-path "$BASELINE_EVAL_JSONL" \
     --output-path "$refine_jsonl" \
     --schema-path "$SCHEMA_TXT" \
@@ -324,7 +348,7 @@ run_generic_refine() {
     --timeout "$TIMEOUT" \
     --workers "$GENERIC_REFINE_WORKERS"
 
-  run_cmd python3 -m src.eval.evaluate_final_sql \
+  run_cmd_logged "$stage_log" python3 -m src.eval.evaluate_final_sql \
     --input-jsonl "$refine_jsonl" \
     --output-jsonl "$final_eval_jsonl" \
     --metrics-json "$final_metrics_json" \
@@ -333,7 +357,7 @@ run_generic_refine() {
     --db-path "$DB_PATH" \
     --workers "$WORKERS"
 
-  run_cmd python3 -m src.eval.evaluate_asa \
+  run_cmd_logged "$stage_log" python3 -m src.eval.evaluate_asa \
     --before-jsonl "$BASELINE_EVAL_JSONL" \
     --after-jsonl "$final_eval_jsonl" \
     --schema-path "$SCHEMA_JSON" \

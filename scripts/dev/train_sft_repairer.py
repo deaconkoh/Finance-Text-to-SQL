@@ -24,13 +24,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-seq-length", type=int, default=4096)
     parser.add_argument("--num-train-epochs", type=float, default=1.0)
     parser.add_argument("--learning-rate", type=float, default=2e-4)
-    parser.add_argument("--per-device-train-batch-size", type=int, default=1)
-    parser.add_argument("--gradient-accumulation-steps", type=int, default=8)
+    parser.add_argument("--per-device-train-batch-size", type=int, default=4)
+    parser.add_argument("--gradient-accumulation-steps", type=int, default=1)
     parser.add_argument("--lora-r", type=int, default=16)
     parser.add_argument("--lora-alpha", type=int, default=32)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--no-4bit", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--dataset-num-proc", type=int, default=4)
+    parser.add_argument("--dataloader-num-workers", type=int, default=4)
+    parser.add_argument("--resume-from-checkpoint", default=None)
     return parser.parse_args()
 
 
@@ -51,6 +54,9 @@ def main() -> None:
             lora_dropout=args.lora_dropout,
             load_in_4bit=not args.no_4bit,
             seed=args.seed,
+            dataset_num_proc=args.dataset_num_proc,
+            dataloader_num_workers=args.dataloader_num_workers,
+            resume_from_checkpoint=args.resume_from_checkpoint,
         )
     )
     print(f"Saved SFT repairer adapter to {args.output_dir}")
@@ -58,4 +64,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

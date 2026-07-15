@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from dataclasses import field
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +26,7 @@ class RewardConfig:
     corruption_penalty: float = -2.0
     invalid_penalty: float = -1.0
     unchanged_wrong_penalty: float = -0.25
+    _schema_annotations: dict[str, Any] | None = field(default=None, init=False, repr=False)
 
 
 @dataclass
@@ -35,10 +39,13 @@ class RLConfig:
     base_model: str = DEFAULT_LLAMA31_8B_BASE_MODEL
     max_new_tokens: int = 768
     learning_rate: float = 1e-6
-    batch_size: int = 1
-    mini_batch_size: int = 1
+    batch_size: int = 4
+    mini_batch_size: int = 4
     ppo_epochs: int = 1
     load_in_4bit: bool = True
+    dataset_num_proc: int = 4
+    reward_workers: int = 4
+    seed: int = 42
 
 
 def _execute_sql(db_path: str, sql: str) -> tuple[bool, list[tuple[Any, ...]] | None]:
@@ -79,7 +86,10 @@ def compute_repair_reward(
         reward += reward_config.correction_reward
 
     if ex_correct:
-        schema_annotations = json.loads(Path(reward_config.schema_annotations_path).read_text(encoding="utf-8"))
+        if reward_config._schema_annotations is None:
+            reward_config._schema_annotations = json.loads(
+                Path(reward_config.schema_annotations_path).read_text(encoding="utf-8")
+            )
         asa_row = evaluate_asa_row(
             {
                 "question_id": example.get("question_id"),
@@ -87,12 +97,36 @@ def compute_repair_reward(
                 "generated_sql": repaired_sql,
                 "execution_match": True,
             },
-            schema_annotations=schema_annotations,
+            schema_annotations=reward_config._schema_annotations,
         )
         if asa_row.get("asa_strict") == 1:
             reward += reward_config.asa_bonus
 
     return reward
+
+
+def compute_repair_rewards(
+    examples: list[dict[str, Any]],
+    model_outputs: list[str],
+    reward_config: RewardConfig,
+    workers: int,
+) -> list[float]:
+    """Compute independent SQLite/ASA rewards concurrently while preserving order."""
+
+    if len(examples) != len(model_outputs):
+        raise ValueError("Reward examples and model outputs must have the same length.")
+    if workers < 1:
+        raise ValueError("Reward workers must be >= 1.")
+    pairs = list(zip(examples, model_outputs, strict=True))
+    if workers == 1 or len(pairs) <= 1:
+        return [compute_repair_reward(example, output, reward_config) for example, output in pairs]
+    with ThreadPoolExecutor(max_workers=min(workers, len(pairs))) as executor:
+        return list(
+            executor.map(
+                lambda pair: compute_repair_reward(pair[0], pair[1], reward_config),
+                pairs,
+            )
+        )
 
 
 def train_rl_repairer(config: RLConfig) -> None:
@@ -126,20 +160,28 @@ def train_rl_repairer(config: RLConfig) -> None:
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
 
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    if torch.cuda.is_available():
+        torch.cuda.set_device(local_rank)
+    model_kwargs: dict[str, Any] = {
+        "torch_dtype": torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+        "quantization_config": quantization_config,
+    }
+    if torch.cuda.is_available():
+        model_kwargs["device_map"] = {"": local_rank}
     base = AutoModelForCausalLM.from_pretrained(
         config.base_model,
-        device_map="auto",
-        torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
-        quantization_config=quantization_config,
+        **model_kwargs,
     )
     model = PeftModel.from_pretrained(base, config.sft_adapter_path, is_trainable=True)
-    dataset = load_dataset("json", data_files=config.train_jsonl, split="train")
+    raw_dataset = load_dataset("json", data_files=config.train_jsonl, split="train")
+    reward_examples = [raw_dataset[index] for index in range(len(raw_dataset))]
     reward_config = RewardConfig(
         db_path=config.db_path,
         schema_annotations_path=config.schema_annotations_path,
     )
 
-    def tokenize(example: dict[str, Any]) -> dict[str, Any]:
+    def tokenize(example: dict[str, Any], index: int) -> dict[str, Any]:
         text = tokenizer.apply_chat_template(
             [{"role": "user", "content": example["prompt"]}],
             tokenize=False,
@@ -147,15 +189,22 @@ def train_rl_repairer(config: RLConfig) -> None:
         )
         encoded = tokenizer(text, truncation=True)
         encoded["query"] = text
+        encoded["reward_index"] = index
         return encoded
 
-    dataset = dataset.map(tokenize)
+    dataset = raw_dataset.map(
+        tokenize,
+        with_indices=True,
+        remove_columns=raw_dataset.column_names,
+        num_proc=config.dataset_num_proc if config.dataset_num_proc > 1 else None,
+    )
     ppo_config = PPOConfig(
         learning_rate=config.learning_rate,
         batch_size=config.batch_size,
         mini_batch_size=config.mini_batch_size,
         ppo_epochs=config.ppo_epochs,
         output_dir=config.output_dir,
+        seed=config.seed,
     )
     trainer = PPOTrainer(config=ppo_config, model=model, tokenizer=tokenizer, dataset=dataset)
 
@@ -167,11 +216,19 @@ def train_rl_repairer(config: RLConfig) -> None:
             return_prompt=False,
         )
         responses = tokenizer.batch_decode(response_tensors, skip_special_tokens=True)
-        rewards = [
-            torch.tensor(compute_repair_reward(example, response, reward_config))
-            for example, response in zip(batch, responses, strict=False)
-        ]
+        reward_indices = batch["reward_index"]
+        if hasattr(reward_indices, "tolist"):
+            reward_indices = reward_indices.tolist()
+        batch_examples = [reward_examples[int(index)] for index in reward_indices]
+        reward_values = compute_repair_rewards(
+            batch_examples,
+            responses,
+            reward_config=reward_config,
+            workers=config.reward_workers,
+        )
+        rewards = [torch.tensor(value, device=query_tensors.device) for value in reward_values]
         trainer.step(query_tensors, response_tensors, rewards)
 
-    trainer.save_pretrained(config.output_dir)
-
+    trainer.accelerator.wait_for_everyone()
+    if trainer.accelerator.is_main_process:
+        trainer.save_pretrained(config.output_dir)

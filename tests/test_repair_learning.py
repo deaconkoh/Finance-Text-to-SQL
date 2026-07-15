@@ -15,9 +15,9 @@ if str(SRC_ROOT) not in sys.path:
 
 from src.eval.evaluate_baseline_sql import GROUP_A, GROUP_B
 from src.repair_learning.data import build_learning_examples
-from src.repair_learning.generate import generate_repair_rows
+from src.repair_learning.generate import OllamaRepairGenerator, generate_repair_rows
 from src.repair_learning.prompting import parse_repaired_sql_from_text
-from src.repair_learning.rl import RewardConfig, compute_repair_reward
+from src.repair_learning.rl import RewardConfig, compute_repair_reward, compute_repair_rewards
 from scripts.dev.build_repair_strategy_ablation_table import build_rows, write_outputs
 
 
@@ -84,6 +84,42 @@ def test_generate_repair_rows_preserves_fixed_verifier_metadata() -> None:
     assert rows[0]["repaired_sql"] == "SELECT SUM(credit) FROM master_txn_table"
 
 
+def test_generate_repair_rows_uses_batched_generator() -> None:
+    class BatchedGenerator:
+        def __init__(self) -> None:
+            self.batches: list[list[str]] = []
+
+        def __call__(self, prompt: str) -> str:
+            raise AssertionError(f"serial generation used for {prompt}")
+
+        def generate_batch(self, prompts: list[str]) -> list[str]:
+            self.batches.append(prompts)
+            return [json.dumps({"repaired_sql": "SELECT 1"}) for _ in prompts]
+
+    generator = BatchedGenerator()
+    rows, summary = generate_repair_rows(
+        verifier_rows=[_semantic_candidate(), _semantic_candidate()],
+        schema_text="CREATE TABLE master_txn_table(debit REAL, credit REAL);",
+        generator=generator,
+        repair_model="test-model",
+        strategy="sft_llama31_8b",
+    )
+
+    assert len(generator.batches) == 1
+    assert len(generator.batches[0]) == 2
+    assert summary["attempted_repairs"] == 2
+    assert len(rows) == 2
+
+
+def test_ollama_repair_generator_preserves_batch_order() -> None:
+    generator = OllamaRepairGenerator(lambda prompt: f"out:{prompt}", workers=2)
+    assert generator.generate_batch(["first", "second", "third"]) == [
+        "out:first",
+        "out:second",
+        "out:third",
+    ]
+
+
 def test_parse_repaired_sql_from_text_accepts_json_and_plain_sql() -> None:
     sql, parsed, error = parse_repaired_sql_from_text('{"repaired_sql": "SELECT 1"}')
     assert sql == "SELECT 1"
@@ -131,6 +167,12 @@ def test_reward_penalizes_invalid_unchanged_wrong_and_corruption(tmp_path: Path)
         compute_repair_reward(correct_example, '{"repaired_sql": "SELECT 2"}', reward_config)
         == reward_config.corruption_penalty
     )
+    assert compute_repair_rewards(
+        [wrong_example, correct_example],
+        ['{"repaired_sql": "SELECT 2"}', '{"repaired_sql": "SELECT 2"}'],
+        reward_config,
+        workers=2,
+    ) == [reward_config.unchanged_wrong_penalty, reward_config.corruption_penalty]
 
 
 def test_repair_strategy_table_has_requested_columns(tmp_path: Path) -> None:

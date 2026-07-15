@@ -26,10 +26,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-model", default=DEFAULT_LLAMA31_8B_BASE_MODEL)
     parser.add_argument("--max-new-tokens", type=int, default=768)
     parser.add_argument("--learning-rate", type=float, default=1e-6)
-    parser.add_argument("--batch-size", type=int, default=1)
-    parser.add_argument("--mini-batch-size", type=int, default=1)
+    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--mini-batch-size", type=int, default=4)
     parser.add_argument("--ppo-epochs", type=int, default=1)
     parser.add_argument("--no-4bit", action="store_true")
+    parser.add_argument("--dataset-num-proc", type=int, default=4)
+    parser.add_argument("--reward-workers", type=int, default=4)
+    parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
 
@@ -49,6 +52,9 @@ def main() -> None:
             mini_batch_size=args.mini_batch_size,
             ppo_epochs=args.ppo_epochs,
             load_in_4bit=not args.no_4bit,
+            dataset_num_proc=args.dataset_num_proc,
+            reward_workers=args.reward_workers,
+            seed=args.seed,
         )
     )
     print(f"Saved RL repairer adapter to {args.output_dir}")
@@ -56,4 +62,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from src.repair_learning import DEFAULT_LLAMA31_8B_BASE_MODEL
@@ -15,13 +16,16 @@ class SFTConfig:
     max_seq_length: int = 4096
     num_train_epochs: float = 1.0
     learning_rate: float = 2e-4
-    per_device_train_batch_size: int = 1
-    gradient_accumulation_steps: int = 8
+    per_device_train_batch_size: int = 4
+    gradient_accumulation_steps: int = 1
     lora_r: int = 16
     lora_alpha: int = 32
     lora_dropout: float = 0.05
     load_in_4bit: bool = True
     seed: int = 42
+    dataset_num_proc: int = 4
+    dataloader_num_workers: int = 4
+    resume_from_checkpoint: str | None = None
 
 
 def train_sft_repairer(config: SFTConfig) -> None:
@@ -31,7 +35,7 @@ def train_sft_repairer(config: SFTConfig) -> None:
         from datasets import load_dataset
         from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-        from transformers import Trainer, TrainingArguments, default_data_collator
+        from transformers import DataCollatorForSeq2Seq, Trainer, TrainingArguments
         import torch
     except ModuleNotFoundError as exc:
         raise ModuleNotFoundError(
@@ -51,11 +55,22 @@ def train_sft_repairer(config: SFTConfig) -> None:
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
 
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    if torch.cuda.is_available():
+        torch.cuda.set_device(local_rank)
+
+    model_kwargs = {
+        "torch_dtype": torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+        "quantization_config": quantization_config,
+    }
+    if torch.cuda.is_available():
+        # Each Accelerate process must own exactly one GPU; device_map="auto"
+        # would otherwise place one model across both GPUs in every process.
+        model_kwargs["device_map"] = {"": local_rank}
     model = AutoModelForCausalLM.from_pretrained(
         config.base_model,
-        device_map="auto",
-        torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
-        quantization_config=quantization_config,
+        **model_kwargs,
     )
 
     peft_config = LoraConfig(
@@ -77,6 +92,7 @@ def train_sft_repairer(config: SFTConfig) -> None:
     if config.load_in_4bit:
         model = prepare_model_for_kbit_training(model)
     model = get_peft_model(model, peft_config)
+    model.config.use_cache = False
 
     dataset = load_dataset("json", data_files=config.train_jsonl, split="train")
 
@@ -96,7 +112,6 @@ def train_sft_repairer(config: SFTConfig) -> None:
             full_text,
             truncation=True,
             max_length=config.max_seq_length,
-            padding="max_length",
         )
         prompt_ids = tokenizer(
             prompt_text,
@@ -117,6 +132,7 @@ def train_sft_repairer(config: SFTConfig) -> None:
     tokenized_dataset = dataset.map(
         tokenize_example,
         remove_columns=dataset.column_names,
+        num_proc=config.dataset_num_proc if config.dataset_num_proc > 1 else None,
     )
     training_args = TrainingArguments(
         output_dir=config.output_dir,
@@ -129,14 +145,21 @@ def train_sft_repairer(config: SFTConfig) -> None:
         seed=config.seed,
         bf16=torch.cuda.is_available(),
         remove_unused_columns=False,
+        dataloader_num_workers=config.dataloader_num_workers,
+        ddp_find_unused_parameters=False if world_size > 1 else None,
     )
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_dataset,
         tokenizer=tokenizer,
-        data_collator=default_data_collator,
+        data_collator=DataCollatorForSeq2Seq(
+            tokenizer=tokenizer,
+            label_pad_token_id=-100,
+            pad_to_multiple_of=8,
+        ),
     )
-    trainer.train()
-    trainer.save_model(config.output_dir)
-    tokenizer.save_pretrained(config.output_dir)
+    trainer.train(resume_from_checkpoint=config.resume_from_checkpoint)
+    if trainer.is_world_process_zero():
+        trainer.save_model(config.output_dir)
+        tokenizer.save_pretrained(config.output_dir)
