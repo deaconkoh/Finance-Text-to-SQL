@@ -17,77 +17,77 @@
   "num_excluded_ambiguous": 1002,
   "slowest_rows": [
     {
-      "question_id": "booksql_073760",
-      "evaluation_time_seconds": 2.1152,
-      "evaluation_group": "A_correct_executable",
-      "generated_error": null,
-      "gold_error": null
-    },
-    {
-      "question_id": "booksql_072743",
-      "evaluation_time_seconds": 2.1082,
-      "evaluation_group": "A_correct_executable",
-      "generated_error": null,
-      "gold_error": null
-    },
-    {
-      "question_id": "booksql_071801",
-      "evaluation_time_seconds": 2.1081,
-      "evaluation_group": "A_correct_executable",
-      "generated_error": null,
-      "gold_error": null
-    },
-    {
-      "question_id": "booksql_077146",
-      "evaluation_time_seconds": 2.0891,
-      "evaluation_group": "A_correct_executable",
-      "generated_error": null,
-      "gold_error": null
-    },
-    {
-      "question_id": "booksql_076157",
-      "evaluation_time_seconds": 2.0792,
-      "evaluation_group": "A_correct_executable",
-      "generated_error": null,
-      "gold_error": null
-    },
-    {
-      "question_id": "booksql_076521",
-      "evaluation_time_seconds": 2.0772,
-      "evaluation_group": "A_correct_executable",
-      "generated_error": null,
-      "gold_error": null
-    },
-    {
-      "question_id": "booksql_073313",
-      "evaluation_time_seconds": 2.0651,
+      "question_id": "booksql_072976",
+      "evaluation_time_seconds": 2.1044,
       "evaluation_group": "A_correct_executable",
       "generated_error": null,
       "gold_error": null
     },
     {
       "question_id": "booksql_076076",
-      "evaluation_time_seconds": 2.0526,
+      "evaluation_time_seconds": 2.0879,
       "evaluation_group": "A_correct_executable",
       "generated_error": null,
       "gold_error": null
     },
     {
-      "question_id": "booksql_072976",
-      "evaluation_time_seconds": 2.0382,
+      "question_id": "booksql_072012",
+      "evaluation_time_seconds": 2.085,
       "evaluation_group": "A_correct_executable",
       "generated_error": null,
       "gold_error": null
     },
     {
-      "question_id": "booksql_078042",
-      "evaluation_time_seconds": 2.0241,
+      "question_id": "booksql_073760",
+      "evaluation_time_seconds": 2.0762,
+      "evaluation_group": "A_correct_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_071879",
+      "evaluation_time_seconds": 2.0758,
+      "evaluation_group": "A_correct_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_075578",
+      "evaluation_time_seconds": 2.0694,
+      "evaluation_group": "A_correct_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_072262",
+      "evaluation_time_seconds": 2.0611,
+      "evaluation_group": "A_correct_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_072743",
+      "evaluation_time_seconds": 2.0549,
+      "evaluation_group": "A_correct_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_076157",
+      "evaluation_time_seconds": 2.0531,
+      "evaluation_group": "A_correct_executable",
+      "generated_error": null,
+      "gold_error": null
+    },
+    {
+      "question_id": "booksql_075952",
+      "evaluation_time_seconds": 2.0486,
       "evaluation_group": "A_correct_executable",
       "generated_error": null,
       "gold_error": null
     }
   ],
-  "total_evaluation_time_seconds": 330.1162,
+  "total_evaluation_time_seconds": 330.3334,
   "workers": 4,
   "max_progress_steps": 2000000,
   "progress_check_interval": 1000,

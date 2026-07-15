@@ -394,3 +394,814 @@ Saved markdown to: data/outputs/finverisql/eval_publication_20260706_154755/debu
 Saved row diagnostics to: data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_rows.jsonl
 
 [2026-07-09T04:06:01Z] python3 -m src.baseline.generic_refine.self_refine --input-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine.jsonl --schema-path data/booksql/schema.txt --model-name llama3.1:8b --backend ollama --temperature 0 --num-predict 768 --timeout 300
+Run ID: eval_publication_20260706_154755
+Project root: /home/ranjan/deacon_project
+Output root: data/outputs/finverisql/eval_publication_20260706_154755
+Preserved existing run metadata and wrote resume metadata to data/outputs/finverisql/eval_publication_20260706_154755/debug/run_resume_20260715_032308.json
+
+[2026-07-15T03:23:08Z] python3 -m src.baseline.baseline_runner --model qwen --backend ollama --ollama-model-name qwen2.5-coder:7b-instruct --temperature 0 --seed 42 --timeout 300 --max-new-tokens 128 --split validation --prompt-setting few_shot --data-path data/booksql/booksql_normalized.jsonl --db-path data/booksql/accounting.sqlite --schema-path data/booksql/schema.txt --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+Loading BookSQL inference records...
+Split     : validation
+Loading BookSQL train records for few-shot examples...
+Few-shot examples: easy=booksql_000003, medium=booksql_000004, hard=booksql_000000
+Rows      : 7605
+Output    : data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+Using Qwen baseline through Ollama...
+Ollama model: qwen2.5-coder:7b-instruct
+Already completed for this output file: 7605
+  0%|          | 0/7605 [00:00<?, ?it/s]100%|██████████| 7605/7605 [00:00<00:00, 1753005.16it/s]
+Saved results to data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+
+[2026-07-15T03:23:09Z] python3 -m src.eval.evaluate_baseline_sql --input-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl --output-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --metrics-json data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_metrics.json --db-path data/booksql/accounting.sqlite --workers 4
+Evaluating full dataset: 7605 rows
+Using workers: 4
+DB path: data/booksql/accounting.sqlite
+[50/7605] qid=booksql_070877 time=0.17s group=A_correct_executable gen_status=success
+[100/7605] qid=booksql_070927 time=0.20s group=B_wrong_executable gen_status=success
+[150/7605] qid=booksql_070977 time=0.20s group=B_wrong_executable gen_status=success
+[200/7605] qid=booksql_071027 time=0.25s group=A_correct_executable gen_status=success
+[250/7605] qid=booksql_071079 time=0.10s group=C_non_executable gen_status=error
+[300/7605] qid=booksql_071130 time=0.00s group=D_ambiguous gen_status=error
+[350/7605] qid=booksql_071177 time=0.20s group=B_wrong_executable gen_status=success
+[400/7605] qid=booksql_071225 time=0.21s group=A_correct_executable gen_status=success
+[450/7605] qid=booksql_071275 time=0.20s group=A_correct_executable gen_status=success
+[500/7605] qid=booksql_071326 time=0.18s group=A_correct_executable gen_status=success
+[550/7605] qid=booksql_071380 time=0.00s group=D_ambiguous gen_status=error
+[600/7605] qid=booksql_071426 time=0.11s group=A_correct_executable gen_status=success
+[650/7605] qid=booksql_071479 time=0.09s group=B_wrong_executable gen_status=success
+[700/7605] qid=booksql_071525 time=0.21s group=B_wrong_executable gen_status=success
+[750/7605] qid=booksql_071577 time=0.19s group=B_wrong_executable gen_status=success
+[800/7605] qid=booksql_071628 time=0.20s group=A_correct_executable gen_status=success
+[850/7605] qid=booksql_071678 time=0.10s group=B_wrong_executable gen_status=success
+[900/7605] qid=booksql_071728 time=0.17s group=A_correct_executable gen_status=success
+[950/7605] qid=booksql_071777 time=0.18s group=B_wrong_executable gen_status=success
+[1000/7605] qid=booksql_071800 time=1.99s group=A_correct_executable gen_status=success
+[1050/7605] qid=booksql_071876 time=0.19s group=A_correct_executable gen_status=success
+[1100/7605] qid=booksql_071927 time=0.17s group=A_correct_executable gen_status=success
+[1150/7605] qid=booksql_071978 time=0.17s group=A_correct_executable gen_status=success
+[1200/7605] qid=booksql_072030 time=0.10s group=A_correct_executable gen_status=success
+[1250/7605] qid=booksql_072073 time=0.33s group=A_correct_executable gen_status=success
+[1300/7605] qid=booksql_072125 time=0.23s group=A_correct_executable gen_status=success
+[1350/7605] qid=booksql_072175 time=0.26s group=D_ambiguous gen_status=success
+[1400/7605] qid=booksql_072227 time=0.23s group=A_correct_executable gen_status=success
+[1450/7605] qid=booksql_072278 time=0.19s group=A_correct_executable gen_status=success
+[1500/7605] qid=booksql_072328 time=0.20s group=A_correct_executable gen_status=success
+[1550/7605] qid=booksql_072377 time=0.17s group=A_correct_executable gen_status=success
+[1600/7605] qid=booksql_072427 time=0.21s group=A_correct_executable gen_status=success
+[1650/7605] qid=booksql_072476 time=0.18s group=A_correct_executable gen_status=success
+[1700/7605] qid=booksql_072528 time=0.17s group=A_correct_executable gen_status=success
+[1750/7605] qid=booksql_072575 time=0.22s group=A_correct_executable gen_status=success
+[1800/7605] qid=booksql_072630 time=0.00s group=D_ambiguous gen_status=success
+[1850/7605] qid=booksql_072678 time=0.11s group=D_ambiguous gen_status=success
+[1900/7605] qid=booksql_072726 time=0.17s group=A_correct_executable gen_status=success
+[1950/7605] qid=booksql_072778 time=0.19s group=A_correct_executable gen_status=success
+[2000/7605] qid=booksql_072826 time=0.19s group=A_correct_executable gen_status=success
+[2050/7605] qid=booksql_072876 time=0.17s group=A_correct_executable gen_status=success
+[2100/7605] qid=booksql_072926 time=0.20s group=B_wrong_executable gen_status=success
+[2150/7605] qid=booksql_072978 time=0.22s group=A_correct_executable gen_status=success
+[2200/7605] qid=booksql_073030 time=0.00s group=D_ambiguous gen_status=success
+[2250/7605] qid=booksql_073077 time=0.23s group=A_correct_executable gen_status=success
+[2300/7605] qid=booksql_073126 time=0.21s group=B_wrong_executable gen_status=success
+[2350/7605] qid=booksql_073179 time=0.00s group=D_ambiguous gen_status=success
+[2400/7605] qid=booksql_073228 time=0.19s group=A_correct_executable gen_status=success
+[2450/7605] qid=booksql_073280 time=0.00s group=D_ambiguous gen_status=error
+[2500/7605] qid=booksql_073328 time=0.20s group=A_correct_executable gen_status=success
+[2550/7605] qid=booksql_073376 time=0.17s group=A_correct_executable gen_status=success
+[2600/7605] qid=booksql_073430 time=0.00s group=D_ambiguous gen_status=success
+[2650/7605] qid=booksql_073480 time=0.00s group=D_ambiguous gen_status=success
+[2700/7605] qid=booksql_073525 time=0.23s group=A_correct_executable gen_status=success
+[2750/7605] qid=booksql_073577 time=0.22s group=A_correct_executable gen_status=success
+[2800/7605] qid=booksql_073625 time=0.19s group=A_correct_executable gen_status=success
+[2850/7605] qid=booksql_073680 time=0.10s group=C_non_executable gen_status=error
+[2900/7605] qid=booksql_073728 time=0.10s group=A_correct_executable gen_status=success
+[2950/7605] qid=booksql_073779 time=0.17s group=A_correct_executable gen_status=success
+[3000/7605] qid=booksql_073826 time=0.20s group=A_correct_executable gen_status=success
+[3050/7605] qid=booksql_073877 time=0.23s group=A_correct_executable gen_status=success
+[3100/7605] qid=booksql_073925 time=0.20s group=A_correct_executable gen_status=success
+[3150/7605] qid=booksql_073980 time=0.00s group=D_ambiguous gen_status=success
+[3200/7605] qid=booksql_074026 time=0.21s group=A_correct_executable gen_status=success
+[3250/7605] qid=booksql_074078 time=0.21s group=A_correct_executable gen_status=success
+[3300/7605] qid=booksql_074128 time=0.18s group=A_correct_executable gen_status=success
+[3350/7605] qid=booksql_074178 time=0.17s group=A_correct_executable gen_status=success
+[3400/7605] qid=booksql_074230 time=0.00s group=D_ambiguous gen_status=success
+[3450/7605] qid=booksql_074273 time=0.26s group=D_ambiguous gen_status=success
+[3500/7605] qid=booksql_074324 time=0.20s group=A_correct_executable gen_status=success
+[3550/7605] qid=booksql_074377 time=0.18s group=A_correct_executable gen_status=success
+[3600/7605] qid=booksql_074427 time=0.18s group=A_correct_executable gen_status=success
+[3650/7605] qid=booksql_074476 time=0.19s group=A_correct_executable gen_status=success
+[3700/7605] qid=booksql_074525 time=0.19s group=A_correct_executable gen_status=success
+[3750/7605] qid=booksql_074577 time=0.22s group=A_correct_executable gen_status=success
+[3800/7605] qid=booksql_074630 time=0.00s group=D_ambiguous gen_status=success
+[3850/7605] qid=booksql_074678 time=0.19s group=A_correct_executable gen_status=success
+[3900/7605] qid=booksql_074726 time=0.18s group=B_wrong_executable gen_status=success
+[3950/7605] qid=booksql_074775 time=0.20s group=A_correct_executable gen_status=success
+[4000/7605] qid=booksql_074820 time=0.20s group=B_wrong_executable gen_status=success
+[4050/7605] qid=booksql_074877 time=0.19s group=A_correct_executable gen_status=success
+[4100/7605] qid=booksql_074927 time=0.20s group=A_correct_executable gen_status=success
+[4150/7605] qid=booksql_074976 time=0.24s group=A_correct_executable gen_status=success
+[4200/7605] qid=booksql_075022 time=0.23s group=A_correct_executable gen_status=success
+[4250/7605] qid=booksql_075077 time=0.21s group=B_wrong_executable gen_status=success
+[4300/7605] qid=booksql_075128 time=0.10s group=B_wrong_executable gen_status=success
+[4350/7605] qid=booksql_075180 time=0.00s group=D_ambiguous gen_status=error
+[4400/7605] qid=booksql_075227 time=0.20s group=B_wrong_executable gen_status=success
+[4450/7605] qid=booksql_075279 time=0.19s group=A_correct_executable gen_status=success
+[4500/7605] qid=booksql_075328 time=0.10s group=A_correct_executable gen_status=success
+[4550/7605] qid=booksql_075378 time=0.18s group=A_correct_executable gen_status=success
+[4600/7605] qid=booksql_075425 time=0.20s group=A_correct_executable gen_status=success
+[4650/7605] qid=booksql_075480 time=0.00s group=D_ambiguous gen_status=error
+[4700/7605] qid=booksql_075524 time=0.24s group=A_correct_executable gen_status=success
+[4750/7605] qid=booksql_075580 time=0.00s group=D_ambiguous gen_status=success
+[4800/7605] qid=booksql_075629 time=0.20s group=B_wrong_executable gen_status=success
+[4850/7605] qid=booksql_075676 time=0.23s group=A_correct_executable gen_status=success
+[4900/7605] qid=booksql_075730 time=0.00s group=D_ambiguous gen_status=success
+[4950/7605] qid=booksql_075776 time=0.20s group=B_wrong_executable gen_status=success
+[5000/7605] qid=booksql_075828 time=0.18s group=A_correct_executable gen_status=success
+[5050/7605] qid=booksql_075873 time=0.20s group=B_wrong_executable gen_status=success
+[5100/7605] qid=booksql_075928 time=0.10s group=A_correct_executable gen_status=success
+[5150/7605] qid=booksql_075979 time=0.18s group=A_correct_executable gen_status=success
+[5200/7605] qid=booksql_076027 time=0.19s group=A_correct_executable gen_status=success
+[5250/7605] qid=booksql_076078 time=0.22s group=A_correct_executable gen_status=success
+[5300/7605] qid=booksql_076128 time=0.17s group=A_correct_executable gen_status=success
+[5350/7605] qid=booksql_076180 time=0.00s group=D_ambiguous gen_status=error
+[5400/7605] qid=booksql_076227 time=0.21s group=A_correct_executable gen_status=success
+[5450/7605] qid=booksql_076277 time=0.10s group=C_non_executable gen_status=error
+[5500/7605] qid=booksql_076328 time=0.11s group=A_correct_executable gen_status=success
+[5550/7605] qid=booksql_076376 time=0.20s group=B_wrong_executable gen_status=success
+[5600/7605] qid=booksql_076425 time=0.19s group=A_correct_executable gen_status=success
+[5650/7605] qid=booksql_076473 time=0.26s group=A_correct_executable gen_status=success
+[5700/7605] qid=booksql_076529 time=0.18s group=B_wrong_executable gen_status=success
+[5750/7605] qid=booksql_076572 time=0.59s group=A_correct_executable gen_status=success
+[5800/7605] qid=booksql_076629 time=0.11s group=A_correct_executable gen_status=success
+[5850/7605] qid=booksql_076675 time=0.19s group=A_correct_executable gen_status=success
+[5900/7605] qid=booksql_076727 time=0.20s group=A_correct_executable gen_status=success
+[5950/7605] qid=booksql_076777 time=0.17s group=A_correct_executable gen_status=success
+[6000/7605] qid=booksql_076827 time=0.17s group=A_correct_executable gen_status=success
+[6050/7605] qid=booksql_076877 time=0.18s group=A_correct_executable gen_status=success
+[6100/7605] qid=booksql_076927 time=0.18s group=A_correct_executable gen_status=success
+[6150/7605] qid=booksql_076976 time=0.20s group=B_wrong_executable gen_status=success
+[6200/7605] qid=booksql_077027 time=0.22s group=A_correct_executable gen_status=success
+[6250/7605] qid=booksql_077077 time=0.20s group=B_wrong_executable gen_status=success
+[6300/7605] qid=booksql_077125 time=0.20s group=A_correct_executable gen_status=success
+[6350/7605] qid=booksql_077178 time=0.17s group=A_correct_executable gen_status=success
+[6400/7605] qid=booksql_077224 time=0.23s group=A_correct_executable gen_status=success
+[6450/7605] qid=booksql_077276 time=0.18s group=A_correct_executable gen_status=success
+[6500/7605] qid=booksql_077326 time=0.10s group=A_correct_executable gen_status=success
+[6550/7605] qid=booksql_077377 time=0.20s group=A_correct_executable gen_status=success
+[6600/7605] qid=booksql_077425 time=0.21s group=A_correct_executable gen_status=success
+[6650/7605] qid=booksql_077478 time=0.18s group=B_wrong_executable gen_status=success
+[6700/7605] qid=booksql_077527 time=0.10s group=A_correct_executable gen_status=success
+[6750/7605] qid=booksql_077577 time=0.20s group=A_correct_executable gen_status=success
+[6800/7605] qid=booksql_077630 time=0.00s group=D_ambiguous gen_status=success
+[6850/7605] qid=booksql_077677 time=0.17s group=A_correct_executable gen_status=success
+[6900/7605] qid=booksql_077727 time=0.19s group=A_correct_executable gen_status=success
+[6950/7605] qid=booksql_077776 time=0.22s group=A_correct_executable gen_status=success
+[7000/7605] qid=booksql_077827 time=0.19s group=A_correct_executable gen_status=success
+[7050/7605] qid=booksql_077876 time=0.20s group=B_wrong_executable gen_status=success
+[7100/7605] qid=booksql_077927 time=0.18s group=A_correct_executable gen_status=success
+[7150/7605] qid=booksql_077978 time=0.20s group=A_correct_executable gen_status=success
+[7200/7605] qid=booksql_078029 time=0.10s group=D_ambiguous gen_status=success
+[7250/7605] qid=booksql_078078 time=0.19s group=A_correct_executable gen_status=success
+[7300/7605] qid=booksql_078128 time=0.10s group=B_wrong_executable gen_status=success
+[7350/7605] qid=booksql_078176 time=0.22s group=A_correct_executable gen_status=success
+[7400/7605] qid=booksql_078227 time=0.19s group=A_correct_executable gen_status=success
+[7450/7605] qid=booksql_078277 time=0.19s group=A_correct_executable gen_status=success
+[7500/7605] qid=booksql_078330 time=0.00s group=D_ambiguous gen_status=error
+[7550/7605] qid=booksql_078377 time=0.24s group=A_correct_executable gen_status=success
+[7600/7605] qid=booksql_078396 time=2.00s group=A_correct_executable gen_status=success
+Evaluated rows: 7605
+Metric denominator: 6603
+Group A correct executable: 5048
+Group B wrong executable: 1348
+Group C non-executable: 207
+Group D ambiguous: 1002
+Execution accuracy: 0.7645
+Valid SQL rate: 0.9687
+Executable-wrong rate: 0.2041
+Total evaluation time: 321.81s
+Saved row-level results to data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl
+Saved metrics to data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_metrics.json
+
+[2026-07-15T03:28:31Z] python3 -m src.eval.evaluate_asa --before-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --schema-path data/booksql/schema_annotations.json --output-json data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.json --output-md data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.md --row-output-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_rows.jsonl
+Join mode: single_file
+Question IDs evaluated: 6603
+Group D filtered: 1002
+before: ex_acc=0.7645 asa_strict=0.7350 asa_lower_bound=0.6620 fper=0.0048
+Saved metrics to: data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.json
+Saved markdown to: data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.md
+Saved row diagnostics to: data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_rows.jsonl
+
+[2026-07-15T03:28:56Z] python3 -m src.baseline.generic_refine.self_refine --input-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine.jsonl --schema-path data/booksql/schema.txt --model-name llama3.1:8b --backend ollama --temperature 0 --num-predict 768 --timeout 300 --workers 4
+Run ID: eval_publication_20260706_154755
+Project root: /home/ranjan/deacon_project
+Output root: data/outputs/finverisql/eval_publication_20260706_154755
+Preserved existing run metadata and wrote resume metadata to data/outputs/finverisql/eval_publication_20260706_154755/debug/run_resume_20260715_034936.json
+
+[2026-07-15T03:49:36Z] python3 -m src.baseline.baseline_runner --model qwen --backend ollama --ollama-model-name qwen2.5-coder:7b-instruct --temperature 0 --seed 42 --timeout 300 --max-new-tokens 128 --split validation --prompt-setting few_shot --data-path data/booksql/booksql_normalized.jsonl --db-path data/booksql/accounting.sqlite --schema-path data/booksql/schema.txt --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+Loading BookSQL inference records...
+Split     : validation
+Loading BookSQL train records for few-shot examples...
+Few-shot examples: easy=booksql_000003, medium=booksql_000004, hard=booksql_000000
+Rows      : 7605
+Output    : data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+Using Qwen baseline through Ollama...
+Ollama model: qwen2.5-coder:7b-instruct
+Already completed for this output file: 7605
+  0%|          | 0/7605 [00:00<?, ?it/s]100%|██████████| 7605/7605 [00:00<00:00, 1853115.78it/s]
+Saved results to data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+
+[2026-07-15T03:49:37Z] python3 -m src.eval.evaluate_baseline_sql --input-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl --output-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --metrics-json data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_metrics.json --db-path data/booksql/accounting.sqlite --workers 4
+Evaluating full dataset: 7605 rows
+Using workers: 4
+DB path: data/booksql/accounting.sqlite
+[50/7605] qid=booksql_070877 time=0.17s group=A_correct_executable gen_status=success
+[100/7605] qid=booksql_070927 time=0.20s group=B_wrong_executable gen_status=success
+[150/7605] qid=booksql_070977 time=0.21s group=B_wrong_executable gen_status=success
+[200/7605] qid=booksql_071027 time=0.24s group=A_correct_executable gen_status=success
+[250/7605] qid=booksql_071079 time=0.10s group=C_non_executable gen_status=error
+[300/7605] qid=booksql_071130 time=0.00s group=D_ambiguous gen_status=error
+[350/7605] qid=booksql_071177 time=0.21s group=B_wrong_executable gen_status=success
+[400/7605] qid=booksql_071225 time=0.23s group=A_correct_executable gen_status=success
+[450/7605] qid=booksql_071275 time=0.20s group=A_correct_executable gen_status=success
+[500/7605] qid=booksql_071326 time=0.19s group=A_correct_executable gen_status=success
+[550/7605] qid=booksql_071380 time=0.00s group=D_ambiguous gen_status=error
+[600/7605] qid=booksql_071426 time=0.10s group=A_correct_executable gen_status=success
+[650/7605] qid=booksql_071479 time=0.09s group=B_wrong_executable gen_status=success
+[700/7605] qid=booksql_071526 time=0.20s group=A_correct_executable gen_status=success
+[750/7605] qid=booksql_071576 time=0.21s group=B_wrong_executable gen_status=success
+[800/7605] qid=booksql_071628 time=0.20s group=A_correct_executable gen_status=success
+[850/7605] qid=booksql_071678 time=0.11s group=B_wrong_executable gen_status=success
+[900/7605] qid=booksql_071728 time=0.17s group=A_correct_executable gen_status=success
+[950/7605] qid=booksql_071777 time=0.18s group=B_wrong_executable gen_status=success
+[1000/7605] qid=booksql_071825 time=0.25s group=A_correct_executable gen_status=success
+[1050/7605] qid=booksql_071876 time=0.19s group=A_correct_executable gen_status=success
+[1100/7605] qid=booksql_071927 time=0.17s group=A_correct_executable gen_status=success
+[1150/7605] qid=booksql_071978 time=0.17s group=A_correct_executable gen_status=success
+[1200/7605] qid=booksql_072028 time=0.19s group=A_correct_executable gen_status=success
+[1250/7605] qid=booksql_072073 time=0.33s group=A_correct_executable gen_status=success
+[1300/7605] qid=booksql_072125 time=0.23s group=A_correct_executable gen_status=success
+[1350/7605] qid=booksql_072176 time=0.19s group=A_correct_executable gen_status=success
+[1400/7605] qid=booksql_072227 time=0.23s group=A_correct_executable gen_status=success
+[1450/7605] qid=booksql_072278 time=0.19s group=A_correct_executable gen_status=success
+[1500/7605] qid=booksql_072328 time=0.20s group=A_correct_executable gen_status=success
+[1550/7605] qid=booksql_072377 time=0.17s group=A_correct_executable gen_status=success
+[1600/7605] qid=booksql_072427 time=0.21s group=A_correct_executable gen_status=success
+[1650/7605] qid=booksql_072476 time=0.18s group=A_correct_executable gen_status=success
+[1700/7605] qid=booksql_072528 time=0.17s group=A_correct_executable gen_status=success
+[1750/7605] qid=booksql_072576 time=0.22s group=A_correct_executable gen_status=success
+[1800/7605] qid=booksql_072630 time=0.00s group=D_ambiguous gen_status=success
+[1850/7605] qid=booksql_072678 time=0.11s group=D_ambiguous gen_status=success
+[1900/7605] qid=booksql_072725 time=0.17s group=A_correct_executable gen_status=success
+[1950/7605] qid=booksql_072776 time=0.24s group=A_correct_executable gen_status=success
+[2000/7605] qid=booksql_072826 time=0.19s group=A_correct_executable gen_status=success
+[2050/7605] qid=booksql_072876 time=0.17s group=A_correct_executable gen_status=success
+[2100/7605] qid=booksql_072926 time=0.20s group=B_wrong_executable gen_status=success
+[2150/7605] qid=booksql_072978 time=0.23s group=A_correct_executable gen_status=success
+[2200/7605] qid=booksql_073030 time=0.00s group=D_ambiguous gen_status=success
+[2250/7605] qid=booksql_073077 time=0.22s group=A_correct_executable gen_status=success
+[2300/7605] qid=booksql_073126 time=0.20s group=B_wrong_executable gen_status=success
+[2350/7605] qid=booksql_073176 time=0.10s group=C_non_executable gen_status=error
+[2400/7605] qid=booksql_073228 time=0.19s group=A_correct_executable gen_status=success
+[2450/7605] qid=booksql_073280 time=0.00s group=D_ambiguous gen_status=error
+[2500/7605] qid=booksql_073328 time=0.19s group=A_correct_executable gen_status=success
+[2550/7605] qid=booksql_073374 time=0.20s group=A_correct_executable gen_status=success
+[2600/7605] qid=booksql_073430 time=0.00s group=D_ambiguous gen_status=success
+[2650/7605] qid=booksql_073480 time=0.00s group=D_ambiguous gen_status=success
+[2700/7605] qid=booksql_073525 time=0.23s group=A_correct_executable gen_status=success
+[2750/7605] qid=booksql_073575 time=0.23s group=A_correct_executable gen_status=success
+[2800/7605] qid=booksql_073625 time=0.19s group=A_correct_executable gen_status=success
+[2850/7605] qid=booksql_073680 time=0.10s group=C_non_executable gen_status=error
+[2900/7605] qid=booksql_073728 time=0.10s group=A_correct_executable gen_status=success
+[2950/7605] qid=booksql_073779 time=0.17s group=A_correct_executable gen_status=success
+[3000/7605] qid=booksql_073826 time=0.20s group=A_correct_executable gen_status=success
+[3050/7605] qid=booksql_073877 time=0.24s group=A_correct_executable gen_status=success
+[3100/7605] qid=booksql_073925 time=0.20s group=A_correct_executable gen_status=success
+[3150/7605] qid=booksql_073980 time=0.00s group=D_ambiguous gen_status=success
+[3200/7605] qid=booksql_074026 time=0.17s group=A_correct_executable gen_status=success
+[3250/7605] qid=booksql_074077 time=0.23s group=A_correct_executable gen_status=success
+[3300/7605] qid=booksql_074129 time=0.13s group=A_correct_executable gen_status=success
+[3350/7605] qid=booksql_074178 time=0.17s group=A_correct_executable gen_status=success
+[3400/7605] qid=booksql_074230 time=0.00s group=D_ambiguous gen_status=success
+[3450/7605] qid=booksql_074273 time=0.27s group=D_ambiguous gen_status=success
+[3500/7605] qid=booksql_074325 time=0.19s group=B_wrong_executable gen_status=success
+[3550/7605] qid=booksql_074377 time=0.18s group=A_correct_executable gen_status=success
+[3600/7605] qid=booksql_074427 time=0.18s group=A_correct_executable gen_status=success
+[3650/7605] qid=booksql_074476 time=0.20s group=A_correct_executable gen_status=success
+[3700/7605] qid=booksql_074525 time=0.19s group=A_correct_executable gen_status=success
+[3750/7605] qid=booksql_074577 time=0.22s group=A_correct_executable gen_status=success
+[3800/7605] qid=booksql_074630 time=0.00s group=D_ambiguous gen_status=success
+[3850/7605] qid=booksql_074678 time=0.19s group=A_correct_executable gen_status=success
+[3900/7605] qid=booksql_074726 time=0.18s group=B_wrong_executable gen_status=success
+[3950/7605] qid=booksql_074775 time=0.20s group=A_correct_executable gen_status=success
+[4000/7605] qid=booksql_074820 time=0.20s group=B_wrong_executable gen_status=success
+[4050/7605] qid=booksql_074874 time=0.24s group=A_correct_executable gen_status=success
+[4100/7605] qid=booksql_074927 time=0.20s group=A_correct_executable gen_status=success
+[4150/7605] qid=booksql_074976 time=0.24s group=A_correct_executable gen_status=success
+[4200/7605] qid=booksql_075022 time=0.23s group=A_correct_executable gen_status=success
+[4250/7605] qid=booksql_075077 time=0.20s group=B_wrong_executable gen_status=success
+[4300/7605] qid=booksql_075128 time=0.10s group=B_wrong_executable gen_status=success
+[4350/7605] qid=booksql_075180 time=0.00s group=D_ambiguous gen_status=error
+[4400/7605] qid=booksql_075227 time=0.20s group=B_wrong_executable gen_status=success
+[4450/7605] qid=booksql_075279 time=0.20s group=A_correct_executable gen_status=success
+[4500/7605] qid=booksql_075328 time=0.10s group=A_correct_executable gen_status=success
+[4550/7605] qid=booksql_075377 time=0.20s group=B_wrong_executable gen_status=success
+[4600/7605] qid=booksql_075425 time=0.21s group=A_correct_executable gen_status=success
+[4650/7605] qid=booksql_075480 time=0.00s group=D_ambiguous gen_status=error
+[4700/7605] qid=booksql_075524 time=0.24s group=A_correct_executable gen_status=success
+[4750/7605] qid=booksql_075580 time=0.00s group=D_ambiguous gen_status=success
+[4800/7605] qid=booksql_075626 time=0.23s group=A_correct_executable gen_status=success
+[4850/7605] qid=booksql_075673 time=0.35s group=A_correct_executable gen_status=success
+[4900/7605] qid=booksql_075730 time=0.00s group=D_ambiguous gen_status=success
+[4950/7605] qid=booksql_075776 time=0.20s group=B_wrong_executable gen_status=success
+[5000/7605] qid=booksql_075828 time=0.18s group=A_correct_executable gen_status=success
+[5050/7605] qid=booksql_075873 time=0.20s group=B_wrong_executable gen_status=success
+[5100/7605] qid=booksql_075928 time=0.10s group=A_correct_executable gen_status=success
+[5150/7605] qid=booksql_075979 time=0.18s group=A_correct_executable gen_status=success
+[5200/7605] qid=booksql_076027 time=0.19s group=A_correct_executable gen_status=success
+[5250/7605] qid=booksql_076078 time=0.21s group=A_correct_executable gen_status=success
+[5300/7605] qid=booksql_076128 time=0.18s group=A_correct_executable gen_status=success
+[5350/7605] qid=booksql_076180 time=0.00s group=D_ambiguous gen_status=error
+[5400/7605] qid=booksql_076227 time=0.21s group=A_correct_executable gen_status=success
+[5450/7605] qid=booksql_076276 time=0.11s group=A_correct_executable gen_status=success
+[5500/7605] qid=booksql_076328 time=0.11s group=A_correct_executable gen_status=success
+[5550/7605] qid=booksql_076376 time=0.20s group=B_wrong_executable gen_status=success
+[5600/7605] qid=booksql_076427 time=0.18s group=A_correct_executable gen_status=success
+[5650/7605] qid=booksql_076477 time=0.10s group=A_correct_executable gen_status=success
+[5700/7605] qid=booksql_076529 time=0.18s group=B_wrong_executable gen_status=success
+[5750/7605] qid=booksql_076579 time=0.22s group=A_correct_executable gen_status=success
+[5800/7605] qid=booksql_076629 time=0.10s group=A_correct_executable gen_status=success
+[5850/7605] qid=booksql_076677 time=0.10s group=B_wrong_executable gen_status=success
+[5900/7605] qid=booksql_076726 time=0.23s group=B_wrong_executable gen_status=success
+[5950/7605] qid=booksql_076777 time=0.17s group=A_correct_executable gen_status=success
+[6000/7605] qid=booksql_076824 time=0.21s group=A_correct_executable gen_status=success
+[6050/7605] qid=booksql_076877 time=0.19s group=A_correct_executable gen_status=success
+[6100/7605] qid=booksql_076927 time=0.19s group=A_correct_executable gen_status=success
+[6150/7605] qid=booksql_076976 time=0.20s group=B_wrong_executable gen_status=success
+[6200/7605] qid=booksql_077028 time=0.20s group=A_correct_executable gen_status=success
+[6250/7605] qid=booksql_077077 time=0.20s group=B_wrong_executable gen_status=success
+[6300/7605] qid=booksql_077125 time=0.20s group=A_correct_executable gen_status=success
+[6350/7605] qid=booksql_077178 time=0.17s group=A_correct_executable gen_status=success
+[6400/7605] qid=booksql_077224 time=0.23s group=A_correct_executable gen_status=success
+[6450/7605] qid=booksql_077276 time=0.19s group=A_correct_executable gen_status=success
+[6500/7605] qid=booksql_077326 time=0.10s group=A_correct_executable gen_status=success
+[6550/7605] qid=booksql_077377 time=0.20s group=A_correct_executable gen_status=success
+[6600/7605] qid=booksql_077425 time=0.19s group=A_correct_executable gen_status=success
+[6650/7605] qid=booksql_077478 time=0.19s group=B_wrong_executable gen_status=success
+[6700/7605] qid=booksql_077527 time=0.11s group=A_correct_executable gen_status=success
+[6750/7605] qid=booksql_077577 time=0.21s group=A_correct_executable gen_status=success
+[6800/7605] qid=booksql_077630 time=0.00s group=D_ambiguous gen_status=success
+[6850/7605] qid=booksql_077677 time=0.17s group=A_correct_executable gen_status=success
+[6900/7605] qid=booksql_077727 time=0.19s group=A_correct_executable gen_status=success
+[6950/7605] qid=booksql_077776 time=0.23s group=A_correct_executable gen_status=success
+[7000/7605] qid=booksql_077827 time=0.21s group=A_correct_executable gen_status=success
+[7050/7605] qid=booksql_077877 time=0.18s group=A_correct_executable gen_status=success
+[7100/7605] qid=booksql_077926 time=0.20s group=B_wrong_executable gen_status=success
+[7150/7605] qid=booksql_077977 time=0.24s group=A_correct_executable gen_status=success
+[7200/7605] qid=booksql_078029 time=0.10s group=D_ambiguous gen_status=success
+[7250/7605] qid=booksql_078078 time=0.19s group=A_correct_executable gen_status=success
+[7300/7605] qid=booksql_078128 time=0.10s group=B_wrong_executable gen_status=success
+[7350/7605] qid=booksql_078176 time=0.22s group=A_correct_executable gen_status=success
+[7400/7605] qid=booksql_078227 time=0.21s group=A_correct_executable gen_status=success
+[7450/7605] qid=booksql_078277 time=0.20s group=A_correct_executable gen_status=success
+[7500/7605] qid=booksql_078330 time=0.00s group=D_ambiguous gen_status=error
+[7550/7605] qid=booksql_078377 time=0.24s group=A_correct_executable gen_status=success
+[7600/7605] qid=booksql_078396 time=1.97s group=A_correct_executable gen_status=success
+Evaluated rows: 7605
+Metric denominator: 6603
+Group A correct executable: 5048
+Group B wrong executable: 1348
+Group C non-executable: 207
+Group D ambiguous: 1002
+Execution accuracy: 0.7645
+Valid SQL rate: 0.9687
+Executable-wrong rate: 0.2041
+Total evaluation time: 323.64s
+Saved row-level results to data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl
+Saved metrics to data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_metrics.json
+
+[2026-07-15T03:55:01Z] python3 -m src.eval.evaluate_asa --before-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --schema-path data/booksql/schema_annotations.json --output-json data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.json --output-md data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.md --row-output-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_rows.jsonl
+Join mode: single_file
+Question IDs evaluated: 6603
+Group D filtered: 1002
+before: ex_acc=0.7645 asa_strict=0.7350 asa_lower_bound=0.6620 fper=0.0048
+Saved metrics to: data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.json
+Saved markdown to: data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.md
+Saved row diagnostics to: data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_rows.jsonl
+
+[2026-07-15T03:55:26Z] python3 -m src.baseline.generic_refine.self_refine --input-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine.jsonl --schema-path data/booksql/schema.txt --model-name llama3.1:8b --backend ollama --temperature 0 --num-predict 768 --timeout 300 --workers 6
+Run ID: eval_publication_20260706_154755
+Project root: /home/ranjan/deacon_project
+Output root: data/outputs/finverisql/eval_publication_20260706_154755
+Preserved existing run metadata and wrote resume metadata to data/outputs/finverisql/eval_publication_20260706_154755/debug/run_resume_20260715_052809.json
+
+[2026-07-15T05:28:09Z] python3 -m src.baseline.baseline_runner --model qwen --backend ollama --ollama-model-name qwen2.5-coder:7b-instruct --temperature 0 --seed 42 --timeout 300 --max-new-tokens 128 --split validation --prompt-setting few_shot --data-path data/booksql/booksql_normalized.jsonl --db-path data/booksql/accounting.sqlite --schema-path data/booksql/schema.txt --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+Loading BookSQL inference records...
+Split     : validation
+Loading BookSQL train records for few-shot examples...
+Few-shot examples: easy=booksql_000003, medium=booksql_000004, hard=booksql_000000
+Rows      : 7605
+Output    : data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+Using Qwen baseline through Ollama...
+Ollama model: qwen2.5-coder:7b-instruct
+Already completed for this output file: 7605
+  0%|          | 0/7605 [00:00<?, ?it/s]100%|██████████| 7605/7605 [00:00<00:00, 798620.01it/s]
+Saved results to data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+
+[2026-07-15T05:28:10Z] python3 -m src.eval.evaluate_baseline_sql --input-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl --output-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --metrics-json data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_metrics.json --db-path data/booksql/accounting.sqlite --workers 4
+Evaluating full dataset: 7605 rows
+Using workers: 4
+DB path: data/booksql/accounting.sqlite
+[50/7605] qid=booksql_070877 time=0.17s group=A_correct_executable gen_status=success
+[100/7605] qid=booksql_070928 time=0.18s group=B_wrong_executable gen_status=success
+[150/7605] qid=booksql_070977 time=0.20s group=B_wrong_executable gen_status=success
+[200/7605] qid=booksql_071027 time=0.24s group=A_correct_executable gen_status=success
+[250/7605] qid=booksql_071079 time=0.10s group=C_non_executable gen_status=error
+[300/7605] qid=booksql_071130 time=0.00s group=D_ambiguous gen_status=error
+[350/7605] qid=booksql_071177 time=0.21s group=B_wrong_executable gen_status=success
+[400/7605] qid=booksql_071225 time=0.21s group=A_correct_executable gen_status=success
+[450/7605] qid=booksql_071275 time=0.20s group=A_correct_executable gen_status=success
+[500/7605] qid=booksql_071325 time=0.24s group=A_correct_executable gen_status=success
+[550/7605] qid=booksql_071380 time=0.00s group=D_ambiguous gen_status=error
+[600/7605] qid=booksql_071426 time=0.10s group=A_correct_executable gen_status=success
+[650/7605] qid=booksql_071479 time=0.09s group=B_wrong_executable gen_status=success
+[700/7605] qid=booksql_071526 time=0.19s group=A_correct_executable gen_status=success
+[750/7605] qid=booksql_071576 time=0.20s group=B_wrong_executable gen_status=success
+[800/7605] qid=booksql_071628 time=0.19s group=A_correct_executable gen_status=success
+[850/7605] qid=booksql_071678 time=0.11s group=B_wrong_executable gen_status=success
+[900/7605] qid=booksql_071728 time=0.17s group=A_correct_executable gen_status=success
+[950/7605] qid=booksql_071777 time=0.19s group=B_wrong_executable gen_status=success
+[1000/7605] qid=booksql_071801 time=1.98s group=A_correct_executable gen_status=success
+[1050/7605] qid=booksql_071876 time=0.19s group=A_correct_executable gen_status=success
+[1100/7605] qid=booksql_071927 time=0.17s group=A_correct_executable gen_status=success
+[1150/7605] qid=booksql_071978 time=0.17s group=A_correct_executable gen_status=success
+[1200/7605] qid=booksql_072028 time=0.19s group=A_correct_executable gen_status=success
+[1250/7605] qid=booksql_072075 time=0.26s group=A_correct_executable gen_status=success
+[1300/7605] qid=booksql_072126 time=0.19s group=A_correct_executable gen_status=success
+[1350/7605] qid=booksql_072176 time=0.19s group=A_correct_executable gen_status=success
+[1400/7605] qid=booksql_072227 time=0.23s group=A_correct_executable gen_status=success
+[1450/7605] qid=booksql_072278 time=0.19s group=A_correct_executable gen_status=success
+[1500/7605] qid=booksql_072327 time=0.22s group=A_correct_executable gen_status=success
+[1550/7605] qid=booksql_072377 time=0.17s group=A_correct_executable gen_status=success
+[1600/7605] qid=booksql_072427 time=0.21s group=A_correct_executable gen_status=success
+[1650/7605] qid=booksql_072476 time=0.18s group=A_correct_executable gen_status=success
+[1700/7605] qid=booksql_072528 time=0.17s group=A_correct_executable gen_status=success
+[1750/7605] qid=booksql_072576 time=0.21s group=A_correct_executable gen_status=success
+[1800/7605] qid=booksql_072630 time=0.00s group=D_ambiguous gen_status=success
+[1850/7605] qid=booksql_072678 time=0.11s group=D_ambiguous gen_status=success
+[1900/7605] qid=booksql_072726 time=0.17s group=A_correct_executable gen_status=success
+[1950/7605] qid=booksql_072777 time=0.18s group=B_wrong_executable gen_status=success
+[2000/7605] qid=booksql_072826 time=0.18s group=A_correct_executable gen_status=success
+[2050/7605] qid=booksql_072876 time=0.18s group=A_correct_executable gen_status=success
+[2100/7605] qid=booksql_072926 time=0.20s group=B_wrong_executable gen_status=success
+[2150/7605] qid=booksql_072978 time=0.22s group=A_correct_executable gen_status=success
+[2200/7605] qid=booksql_073030 time=0.00s group=D_ambiguous gen_status=success
+[2250/7605] qid=booksql_073077 time=0.22s group=A_correct_executable gen_status=success
+[2300/7605] qid=booksql_073126 time=0.20s group=B_wrong_executable gen_status=success
+[2350/7605] qid=booksql_073179 time=0.00s group=D_ambiguous gen_status=success
+[2400/7605] qid=booksql_073227 time=0.20s group=B_wrong_executable gen_status=success
+[2450/7605] qid=booksql_073280 time=0.00s group=D_ambiguous gen_status=error
+[2500/7605] qid=booksql_073328 time=0.19s group=A_correct_executable gen_status=success
+[2550/7605] qid=booksql_073376 time=0.17s group=A_correct_executable gen_status=success
+[2600/7605] qid=booksql_073430 time=0.00s group=D_ambiguous gen_status=success
+[2650/7605] qid=booksql_073480 time=0.00s group=D_ambiguous gen_status=success
+[2700/7605] qid=booksql_073525 time=0.23s group=A_correct_executable gen_status=success
+[2750/7605] qid=booksql_073575 time=0.23s group=A_correct_executable gen_status=success
+[2800/7605] qid=booksql_073625 time=0.18s group=A_correct_executable gen_status=success
+[2850/7605] qid=booksql_073680 time=0.10s group=C_non_executable gen_status=error
+[2900/7605] qid=booksql_073728 time=0.11s group=A_correct_executable gen_status=success
+[2950/7605] qid=booksql_073778 time=0.21s group=A_correct_executable gen_status=success
+[3000/7605] qid=booksql_073826 time=0.19s group=A_correct_executable gen_status=success
+[3050/7605] qid=booksql_073877 time=0.24s group=A_correct_executable gen_status=success
+[3100/7605] qid=booksql_073925 time=0.21s group=A_correct_executable gen_status=success
+[3150/7605] qid=booksql_073980 time=0.00s group=D_ambiguous gen_status=success
+[3200/7605] qid=booksql_074026 time=0.17s group=A_correct_executable gen_status=success
+[3250/7605] qid=booksql_074078 time=0.21s group=A_correct_executable gen_status=success
+[3300/7605] qid=booksql_074129 time=0.13s group=A_correct_executable gen_status=success
+[3350/7605] qid=booksql_074177 time=0.18s group=B_wrong_executable gen_status=success
+[3400/7605] qid=booksql_074230 time=0.00s group=D_ambiguous gen_status=success
+[3450/7605] qid=booksql_074273 time=0.26s group=D_ambiguous gen_status=success
+[3500/7605] qid=booksql_074325 time=0.18s group=B_wrong_executable gen_status=success
+[3550/7605] qid=booksql_074377 time=0.18s group=A_correct_executable gen_status=success
+[3600/7605] qid=booksql_074427 time=0.19s group=A_correct_executable gen_status=success
+[3650/7605] qid=booksql_074476 time=0.20s group=A_correct_executable gen_status=success
+[3700/7605] qid=booksql_074525 time=0.18s group=A_correct_executable gen_status=success
+[3750/7605] qid=booksql_074577 time=0.21s group=A_correct_executable gen_status=success
+[3800/7605] qid=booksql_074630 time=0.00s group=D_ambiguous gen_status=success
+[3850/7605] qid=booksql_074678 time=0.19s group=A_correct_executable gen_status=success
+[3900/7605] qid=booksql_074726 time=0.18s group=B_wrong_executable gen_status=success
+[3950/7605] qid=booksql_074780 time=0.00s group=D_ambiguous gen_status=success
+[4000/7605] qid=booksql_074821 time=0.17s group=A_correct_executable gen_status=success
+[4050/7605] qid=booksql_074874 time=0.24s group=A_correct_executable gen_status=success
+[4100/7605] qid=booksql_074927 time=0.20s group=A_correct_executable gen_status=success
+[4150/7605] qid=booksql_074976 time=0.24s group=A_correct_executable gen_status=success
+[4200/7605] qid=booksql_075022 time=0.23s group=A_correct_executable gen_status=success
+[4250/7605] qid=booksql_075077 time=0.21s group=B_wrong_executable gen_status=success
+[4300/7605] qid=booksql_075124 time=0.23s group=A_correct_executable gen_status=success
+[4350/7605] qid=booksql_075180 time=0.00s group=D_ambiguous gen_status=error
+[4400/7605] qid=booksql_075229 time=0.18s group=A_correct_executable gen_status=success
+[4450/7605] qid=booksql_075278 time=0.22s group=A_correct_executable gen_status=success
+[4500/7605] qid=booksql_075328 time=0.10s group=A_correct_executable gen_status=success
+[4550/7605] qid=booksql_075376 time=0.26s group=B_wrong_executable gen_status=success
+[4600/7605] qid=booksql_075425 time=0.21s group=A_correct_executable gen_status=success
+[4650/7605] qid=booksql_075480 time=0.00s group=D_ambiguous gen_status=error
+[4700/7605] qid=booksql_075524 time=0.24s group=A_correct_executable gen_status=success
+[4750/7605] qid=booksql_075580 time=0.00s group=D_ambiguous gen_status=success
+[4800/7605] qid=booksql_075629 time=0.20s group=B_wrong_executable gen_status=success
+[4850/7605] qid=booksql_075673 time=0.34s group=A_correct_executable gen_status=success
+[4900/7605] qid=booksql_075730 time=0.00s group=D_ambiguous gen_status=success
+[4950/7605] qid=booksql_075776 time=0.20s group=B_wrong_executable gen_status=success
+[5000/7605] qid=booksql_075828 time=0.18s group=A_correct_executable gen_status=success
+[5050/7605] qid=booksql_075873 time=0.20s group=B_wrong_executable gen_status=success
+[5100/7605] qid=booksql_075928 time=0.10s group=A_correct_executable gen_status=success
+[5150/7605] qid=booksql_075979 time=0.18s group=A_correct_executable gen_status=success
+[5200/7605] qid=booksql_076027 time=0.19s group=A_correct_executable gen_status=success
+[5250/7605] qid=booksql_076078 time=0.21s group=A_correct_executable gen_status=success
+[5300/7605] qid=booksql_076126 time=0.20s group=A_correct_executable gen_status=success
+[5350/7605] qid=booksql_076180 time=0.00s group=D_ambiguous gen_status=error
+[5400/7605] qid=booksql_076227 time=0.21s group=A_correct_executable gen_status=success
+[5450/7605] qid=booksql_076277 time=0.10s group=C_non_executable gen_status=error
+[5500/7605] qid=booksql_076328 time=0.11s group=A_correct_executable gen_status=success
+[5550/7605] qid=booksql_076378 time=0.17s group=A_correct_executable gen_status=success
+[5600/7605] qid=booksql_076425 time=0.19s group=A_correct_executable gen_status=success
+[5650/7605] qid=booksql_076477 time=0.10s group=A_correct_executable gen_status=success
+[5700/7605] qid=booksql_076529 time=0.18s group=B_wrong_executable gen_status=success
+[5750/7605] qid=booksql_076579 time=0.22s group=A_correct_executable gen_status=success
+[5800/7605] qid=booksql_076629 time=0.10s group=A_correct_executable gen_status=success
+[5850/7605] qid=booksql_076675 time=0.19s group=A_correct_executable gen_status=success
+[5900/7605] qid=booksql_076727 time=0.19s group=A_correct_executable gen_status=success
+[5950/7605] qid=booksql_076777 time=0.19s group=A_correct_executable gen_status=success
+[6000/7605] qid=booksql_076827 time=0.17s group=A_correct_executable gen_status=success
+[6050/7605] qid=booksql_076877 time=0.18s group=A_correct_executable gen_status=success
+[6100/7605] qid=booksql_076925 time=0.23s group=A_correct_executable gen_status=success
+[6150/7605] qid=booksql_076977 time=0.17s group=A_correct_executable gen_status=success
+[6200/7605] qid=booksql_077027 time=0.22s group=A_correct_executable gen_status=success
+[6250/7605] qid=booksql_077077 time=0.20s group=B_wrong_executable gen_status=success
+[6300/7605] qid=booksql_077125 time=0.20s group=A_correct_executable gen_status=success
+[6350/7605] qid=booksql_077178 time=0.17s group=A_correct_executable gen_status=success
+[6400/7605] qid=booksql_077224 time=0.23s group=A_correct_executable gen_status=success
+[6450/7605] qid=booksql_077276 time=0.18s group=A_correct_executable gen_status=success
+[6500/7605] qid=booksql_077326 time=0.10s group=A_correct_executable gen_status=success
+[6550/7605] qid=booksql_077377 time=0.19s group=A_correct_executable gen_status=success
+[6600/7605] qid=booksql_077425 time=0.20s group=A_correct_executable gen_status=success
+[6650/7605] qid=booksql_077478 time=0.18s group=B_wrong_executable gen_status=success
+[6700/7605] qid=booksql_077527 time=0.10s group=A_correct_executable gen_status=success
+[6750/7605] qid=booksql_077577 time=0.20s group=A_correct_executable gen_status=success
+[6800/7605] qid=booksql_077630 time=0.00s group=D_ambiguous gen_status=success
+[6850/7605] qid=booksql_077676 time=0.18s group=B_wrong_executable gen_status=success
+[6900/7605] qid=booksql_077727 time=0.19s group=A_correct_executable gen_status=success
+[6950/7605] qid=booksql_077776 time=0.23s group=A_correct_executable gen_status=success
+[7000/7605] qid=booksql_077827 time=0.20s group=A_correct_executable gen_status=success
+[7050/7605] qid=booksql_077877 time=0.18s group=A_correct_executable gen_status=success
+[7100/7605] qid=booksql_077927 time=0.18s group=A_correct_executable gen_status=success
+[7150/7605] qid=booksql_077978 time=0.20s group=A_correct_executable gen_status=success
+[7200/7605] qid=booksql_078029 time=0.10s group=D_ambiguous gen_status=success
+[7250/7605] qid=booksql_078078 time=0.19s group=A_correct_executable gen_status=success
+[7300/7605] qid=booksql_078128 time=0.10s group=B_wrong_executable gen_status=success
+[7350/7605] qid=booksql_078176 time=0.22s group=A_correct_executable gen_status=success
+[7400/7605] qid=booksql_078227 time=0.19s group=A_correct_executable gen_status=success
+[7450/7605] qid=booksql_078277 time=0.20s group=A_correct_executable gen_status=success
+[7500/7605] qid=booksql_078330 time=0.00s group=D_ambiguous gen_status=error
+[7550/7605] qid=booksql_078377 time=0.24s group=A_correct_executable gen_status=success
+[7600/7605] qid=booksql_078396 time=1.96s group=A_correct_executable gen_status=success
+Evaluated rows: 7605
+Metric denominator: 6603
+Group A correct executable: 5048
+Group B wrong executable: 1348
+Group C non-executable: 207
+Group D ambiguous: 1002
+Execution accuracy: 0.7645
+Valid SQL rate: 0.9687
+Executable-wrong rate: 0.2041
+Total evaluation time: 320.59s
+Saved row-level results to data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl
+Saved metrics to data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_metrics.json
+
+[2026-07-15T05:33:31Z] python3 -m src.eval.evaluate_asa --before-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --schema-path data/booksql/schema_annotations.json --output-json data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.json --output-md data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.md --row-output-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_rows.jsonl
+Join mode: single_file
+Question IDs evaluated: 6603
+Group D filtered: 1002
+before: ex_acc=0.7645 asa_strict=0.7350 asa_lower_bound=0.6620 fper=0.0048
+Saved metrics to: data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.json
+Saved markdown to: data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.md
+Saved row diagnostics to: data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_rows.jsonl
+
+[2026-07-15T05:33:56Z] python3 -m src.baseline.generic_refine.self_refine --input-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine.jsonl --schema-path data/booksql/schema.txt --model-name llama3.1:8b --backend ollama --temperature 0 --num-predict 768 --timeout 300 --workers 6
+Run ID: eval_publication_20260706_154755
+Project root: /home/ranjan/deacon_project
+Output root: data/outputs/finverisql/eval_publication_20260706_154755
+Preserved existing run metadata and wrote resume metadata to data/outputs/finverisql/eval_publication_20260706_154755/debug/run_resume_20260715_062114.json
+
+[2026-07-15T06:21:14Z] python3 -m src.baseline.baseline_runner --model qwen --backend ollama --ollama-model-name qwen2.5-coder:7b-instruct --temperature 0 --seed 42 --timeout 300 --max-new-tokens 128 --split validation --prompt-setting few_shot --data-path data/booksql/booksql_normalized.jsonl --db-path data/booksql/accounting.sqlite --schema-path data/booksql/schema.txt --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+Loading BookSQL inference records...
+Split     : validation
+Loading BookSQL train records for few-shot examples...
+Few-shot examples: easy=booksql_000003, medium=booksql_000004, hard=booksql_000000
+Rows      : 7605
+Output    : data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+Using Qwen baseline through Ollama...
+Ollama model: qwen2.5-coder:7b-instruct
+Already completed for this output file: 7605
+  0%|          | 0/7605 [00:00<?, ?it/s]100%|██████████| 7605/7605 [00:00<00:00, 1795636.23it/s]
+Saved results to data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+
+[2026-07-15T06:21:15Z] python3 -m src.eval.evaluate_baseline_sql --input-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl --output-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --metrics-json data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_metrics.json --db-path data/booksql/accounting.sqlite --workers 4
+Evaluating full dataset: 7605 rows
+Using workers: 4
+DB path: data/booksql/accounting.sqlite
+[50/7605] qid=booksql_070877 time=0.17s group=A_correct_executable gen_status=success
+[100/7605] qid=booksql_070927 time=0.20s group=B_wrong_executable gen_status=success
+[150/7605] qid=booksql_070977 time=0.20s group=B_wrong_executable gen_status=success
+[200/7605] qid=booksql_071027 time=0.23s group=A_correct_executable gen_status=success
+[250/7605] qid=booksql_071079 time=0.10s group=C_non_executable gen_status=error
+[300/7605] qid=booksql_071130 time=0.00s group=D_ambiguous gen_status=error
+[350/7605] qid=booksql_071177 time=0.21s group=B_wrong_executable gen_status=success
+[400/7605] qid=booksql_071225 time=0.21s group=A_correct_executable gen_status=success
+[450/7605] qid=booksql_071275 time=0.19s group=A_correct_executable gen_status=success
+[500/7605] qid=booksql_071325 time=0.24s group=A_correct_executable gen_status=success
+[550/7605] qid=booksql_071380 time=0.00s group=D_ambiguous gen_status=error
+[600/7605] qid=booksql_071426 time=0.10s group=A_correct_executable gen_status=success
+[650/7605] qid=booksql_071479 time=0.09s group=B_wrong_executable gen_status=success
+[700/7605] qid=booksql_071526 time=0.21s group=A_correct_executable gen_status=success
+[750/7605] qid=booksql_071577 time=0.18s group=B_wrong_executable gen_status=success
+[800/7605] qid=booksql_071627 time=0.22s group=A_correct_executable gen_status=success
+[850/7605] qid=booksql_071678 time=0.10s group=B_wrong_executable gen_status=success
+[900/7605] qid=booksql_071728 time=0.17s group=A_correct_executable gen_status=success
+[950/7605] qid=booksql_071777 time=0.18s group=B_wrong_executable gen_status=success
+[1000/7605] qid=booksql_071801 time=2.02s group=A_correct_executable gen_status=success
+[1050/7605] qid=booksql_071878 time=0.19s group=A_correct_executable gen_status=success
+[1100/7605] qid=booksql_071927 time=0.17s group=A_correct_executable gen_status=success
+[1150/7605] qid=booksql_071978 time=0.18s group=A_correct_executable gen_status=success
+[1200/7605] qid=booksql_072028 time=0.20s group=A_correct_executable gen_status=success
+[1250/7605] qid=booksql_072075 time=0.25s group=A_correct_executable gen_status=success
+[1300/7605] qid=booksql_072125 time=0.23s group=A_correct_executable gen_status=success
+[1350/7605] qid=booksql_072175 time=0.27s group=D_ambiguous gen_status=success
+[1400/7605] qid=booksql_072227 time=0.23s group=A_correct_executable gen_status=success
+[1450/7605] qid=booksql_072278 time=0.20s group=A_correct_executable gen_status=success
+[1500/7605] qid=booksql_072327 time=0.23s group=A_correct_executable gen_status=success
+[1550/7605] qid=booksql_072377 time=0.18s group=A_correct_executable gen_status=success
+[1600/7605] qid=booksql_072427 time=0.21s group=A_correct_executable gen_status=success
+[1650/7605] qid=booksql_072476 time=0.19s group=A_correct_executable gen_status=success
+[1700/7605] qid=booksql_072528 time=0.17s group=A_correct_executable gen_status=success
+[1750/7605] qid=booksql_072576 time=0.22s group=A_correct_executable gen_status=success
+[1800/7605] qid=booksql_072630 time=0.00s group=D_ambiguous gen_status=success
+[1850/7605] qid=booksql_072678 time=0.11s group=D_ambiguous gen_status=success
+[1900/7605] qid=booksql_072724 time=0.21s group=A_correct_executable gen_status=success
+[1950/7605] qid=booksql_072777 time=0.18s group=B_wrong_executable gen_status=success
+[2000/7605] qid=booksql_072826 time=0.19s group=A_correct_executable gen_status=success
+[2050/7605] qid=booksql_072876 time=0.18s group=A_correct_executable gen_status=success
+[2100/7605] qid=booksql_072925 time=0.22s group=A_correct_executable gen_status=success
+[2150/7605] qid=booksql_072979 time=0.19s group=A_correct_executable gen_status=success
+[2200/7605] qid=booksql_073030 time=0.00s group=D_ambiguous gen_status=success
+[2250/7605] qid=booksql_073077 time=0.22s group=A_correct_executable gen_status=success
+[2300/7605] qid=booksql_073126 time=0.21s group=B_wrong_executable gen_status=success
+[2350/7605] qid=booksql_073179 time=0.00s group=D_ambiguous gen_status=success
+[2400/7605] qid=booksql_073227 time=0.21s group=B_wrong_executable gen_status=success
+[2450/7605] qid=booksql_073280 time=0.00s group=D_ambiguous gen_status=error
+[2500/7605] qid=booksql_073328 time=0.20s group=A_correct_executable gen_status=success
+[2550/7605] qid=booksql_073374 time=0.20s group=A_correct_executable gen_status=success
+[2600/7605] qid=booksql_073430 time=0.00s group=D_ambiguous gen_status=success
+[2650/7605] qid=booksql_073480 time=0.00s group=D_ambiguous gen_status=success
+[2700/7605] qid=booksql_073526 time=0.19s group=A_correct_executable gen_status=success
+[2750/7605] qid=booksql_073576 time=0.20s group=B_wrong_executable gen_status=success
+[2800/7605] qid=booksql_073625 time=0.19s group=A_correct_executable gen_status=success
+[2850/7605] qid=booksql_073680 time=0.10s group=C_non_executable gen_status=error
+[2900/7605] qid=booksql_073728 time=0.11s group=A_correct_executable gen_status=success
+[2950/7605] qid=booksql_073778 time=0.19s group=A_correct_executable gen_status=success
+[3000/7605] qid=booksql_073826 time=0.20s group=A_correct_executable gen_status=success
+[3050/7605] qid=booksql_073877 time=0.23s group=A_correct_executable gen_status=success
+[3100/7605] qid=booksql_073926 time=0.18s group=A_correct_executable gen_status=success
+[3150/7605] qid=booksql_073980 time=0.00s group=D_ambiguous gen_status=success
+[3200/7605] qid=booksql_074026 time=0.18s group=A_correct_executable gen_status=success
+[3250/7605] qid=booksql_074078 time=0.22s group=A_correct_executable gen_status=success
+[3300/7605] qid=booksql_074129 time=0.13s group=A_correct_executable gen_status=success
+[3350/7605] qid=booksql_074178 time=0.18s group=A_correct_executable gen_status=success
+[3400/7605] qid=booksql_074230 time=0.00s group=D_ambiguous gen_status=success
+[3450/7605] qid=booksql_074273 time=0.28s group=D_ambiguous gen_status=success
+[3500/7605] qid=booksql_074329 time=0.00s group=D_ambiguous gen_status=success
+[3550/7605] qid=booksql_074377 time=0.19s group=A_correct_executable gen_status=success
+[3600/7605] qid=booksql_074427 time=0.19s group=A_correct_executable gen_status=success
+[3650/7605] qid=booksql_074476 time=0.20s group=A_correct_executable gen_status=success
+[3700/7605] qid=booksql_074525 time=0.19s group=A_correct_executable gen_status=success
+[3750/7605] qid=booksql_074577 time=0.22s group=A_correct_executable gen_status=success
+[3800/7605] qid=booksql_074630 time=0.00s group=D_ambiguous gen_status=success
+[3850/7605] qid=booksql_074678 time=0.19s group=A_correct_executable gen_status=success
+[3900/7605] qid=booksql_074726 time=0.19s group=B_wrong_executable gen_status=success
+[3950/7605] qid=booksql_074775 time=0.21s group=A_correct_executable gen_status=success
+[4000/7605] qid=booksql_074821 time=0.18s group=A_correct_executable gen_status=success
+[4050/7605] qid=booksql_074877 time=0.19s group=A_correct_executable gen_status=success
+[4100/7605] qid=booksql_074928 time=0.17s group=A_correct_executable gen_status=success
+[4150/7605] qid=booksql_074976 time=0.25s group=A_correct_executable gen_status=success
+[4200/7605] qid=booksql_075022 time=0.24s group=A_correct_executable gen_status=success
+[4250/7605] qid=booksql_075077 time=0.21s group=B_wrong_executable gen_status=success
+[4300/7605] qid=booksql_075124 time=0.22s group=A_correct_executable gen_status=success
+[4350/7605] qid=booksql_075180 time=0.00s group=D_ambiguous gen_status=error
+[4400/7605] qid=booksql_075227 time=0.21s group=B_wrong_executable gen_status=success
+[4450/7605] qid=booksql_075275 time=0.34s group=A_correct_executable gen_status=success
+[4500/7605] qid=booksql_075327 time=0.19s group=A_correct_executable gen_status=success
+[4550/7605] qid=booksql_075377 time=0.20s group=B_wrong_executable gen_status=success
+[4600/7605] qid=booksql_075425 time=0.21s group=A_correct_executable gen_status=success
+[4650/7605] qid=booksql_075480 time=0.00s group=D_ambiguous gen_status=error
+[4700/7605] qid=booksql_075524 time=0.24s group=A_correct_executable gen_status=success
+[4750/7605] qid=booksql_075580 time=0.00s group=D_ambiguous gen_status=success
+[4800/7605] qid=booksql_075629 time=0.21s group=B_wrong_executable gen_status=success
+[4850/7605] qid=booksql_075673 time=0.34s group=A_correct_executable gen_status=success
+[4900/7605] qid=booksql_075730 time=0.00s group=D_ambiguous gen_status=success
+[4950/7605] qid=booksql_075776 time=0.21s group=B_wrong_executable gen_status=success
+[5000/7605] qid=booksql_075828 time=0.19s group=A_correct_executable gen_status=success
+[5050/7605] qid=booksql_075873 time=0.21s group=B_wrong_executable gen_status=success
+[5100/7605] qid=booksql_075926 time=0.22s group=A_correct_executable gen_status=success
+[5150/7605] qid=booksql_075979 time=0.19s group=A_correct_executable gen_status=success
+[5200/7605] qid=booksql_076027 time=0.20s group=A_correct_executable gen_status=success
+[5250/7605] qid=booksql_076078 time=0.24s group=A_correct_executable gen_status=success
+[5300/7605] qid=booksql_076126 time=0.21s group=A_correct_executable gen_status=success
+[5350/7605] qid=booksql_076180 time=0.00s group=D_ambiguous gen_status=error
+[5400/7605] qid=booksql_076227 time=0.22s group=A_correct_executable gen_status=success
+[5450/7605] qid=booksql_076277 time=0.11s group=C_non_executable gen_status=error
+[5500/7605] qid=booksql_076328 time=0.11s group=A_correct_executable gen_status=success
+[5550/7605] qid=booksql_076375 time=0.24s group=A_correct_executable gen_status=success
+[5600/7605] qid=booksql_076427 time=0.19s group=A_correct_executable gen_status=success
+[5650/7605] qid=booksql_076477 time=0.11s group=A_correct_executable gen_status=success
+[5700/7605] qid=booksql_076529 time=0.18s group=B_wrong_executable gen_status=success
+[5750/7605] qid=booksql_076579 time=0.23s group=A_correct_executable gen_status=success
+[5800/7605] qid=booksql_076629 time=0.10s group=A_correct_executable gen_status=success
+[5850/7605] qid=booksql_076677 time=0.11s group=B_wrong_executable gen_status=success
+[5900/7605] qid=booksql_076726 time=0.21s group=B_wrong_executable gen_status=success
+[5950/7605] qid=booksql_076777 time=0.18s group=A_correct_executable gen_status=success
+[6000/7605] qid=booksql_076827 time=0.18s group=A_correct_executable gen_status=success
+[6050/7605] qid=booksql_076877 time=0.19s group=A_correct_executable gen_status=success
+[6100/7605] qid=booksql_076925 time=0.24s group=A_correct_executable gen_status=success
+[6150/7605] qid=booksql_076976 time=0.21s group=B_wrong_executable gen_status=success
+[6200/7605] qid=booksql_077027 time=0.22s group=A_correct_executable gen_status=success
+[6250/7605] qid=booksql_077077 time=0.21s group=B_wrong_executable gen_status=success
+[6300/7605] qid=booksql_077130 time=0.11s group=A_correct_executable gen_status=success
+[6350/7605] qid=booksql_077178 time=0.17s group=A_correct_executable gen_status=success
+[6400/7605] qid=booksql_077224 time=0.24s group=A_correct_executable gen_status=success
+[6450/7605] qid=booksql_077276 time=0.19s group=A_correct_executable gen_status=success
+[6500/7605] qid=booksql_077326 time=0.11s group=A_correct_executable gen_status=success
+[6550/7605] qid=booksql_077377 time=0.20s group=A_correct_executable gen_status=success
+[6600/7605] qid=booksql_077425 time=0.20s group=A_correct_executable gen_status=success
+[6650/7605] qid=booksql_077478 time=0.19s group=B_wrong_executable gen_status=success
+[6700/7605] qid=booksql_077527 time=0.10s group=A_correct_executable gen_status=success
+[6750/7605] qid=booksql_077577 time=0.21s group=A_correct_executable gen_status=success
+[6800/7605] qid=booksql_077630 time=0.00s group=D_ambiguous gen_status=success
+[6850/7605] qid=booksql_077676 time=0.19s group=B_wrong_executable gen_status=success
+[6900/7605] qid=booksql_077727 time=0.20s group=A_correct_executable gen_status=success
+[6950/7605] qid=booksql_077776 time=0.23s group=A_correct_executable gen_status=success
+[7000/7605] qid=booksql_077827 time=0.21s group=A_correct_executable gen_status=success
+[7050/7605] qid=booksql_077877 time=0.19s group=A_correct_executable gen_status=success
+[7100/7605] qid=booksql_077926 time=0.22s group=B_wrong_executable gen_status=success
+[7150/7605] qid=booksql_077978 time=0.22s group=A_correct_executable gen_status=success
+[7200/7605] qid=booksql_078029 time=0.10s group=D_ambiguous gen_status=success
+[7250/7605] qid=booksql_078078 time=0.20s group=A_correct_executable gen_status=success
+[7300/7605] qid=booksql_078128 time=0.11s group=B_wrong_executable gen_status=success
+[7350/7605] qid=booksql_078174 time=0.25s group=A_correct_executable gen_status=success
+[7400/7605] qid=booksql_078227 time=0.20s group=A_correct_executable gen_status=success
+[7450/7605] qid=booksql_078277 time=0.20s group=A_correct_executable gen_status=success
+[7500/7605] qid=booksql_078330 time=0.00s group=D_ambiguous gen_status=error
+[7550/7605] qid=booksql_078377 time=0.24s group=A_correct_executable gen_status=success
+[7600/7605] qid=booksql_078396 time=2.00s group=A_correct_executable gen_status=success
+Evaluated rows: 7605
+Metric denominator: 6603
+Group A correct executable: 5048
+Group B wrong executable: 1348
+Group C non-executable: 207
+Group D ambiguous: 1002
+Execution accuracy: 0.7645
+Valid SQL rate: 0.9687
+Executable-wrong rate: 0.2041
+Total evaluation time: 330.33s
+Saved row-level results to data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl
+Saved metrics to data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_metrics.json
+
+[2026-07-15T06:26:46Z] python3 -m src.eval.evaluate_asa --before-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --schema-path data/booksql/schema_annotations.json --output-json data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.json --output-md data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.md --row-output-jsonl data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_rows.jsonl
+Join mode: single_file
+Question IDs evaluated: 6603
+Group D filtered: 1002
+before: ex_acc=0.7645 asa_strict=0.7350 asa_lower_bound=0.6620 fper=0.0048
+Saved metrics to: data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.json
+Saved markdown to: data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.md
+Saved row diagnostics to: data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_rows.jsonl
+
+[2026-07-15T06:27:12Z] python3 -m src.baseline.generic_refine.self_refine --input-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine.jsonl --schema-path data/booksql/schema.txt --model-name llama3.1:8b --backend ollama --temperature 0 --num-predict 768 --timeout 300 --workers 6
+Run ID: eval_publication_20260706_154755
+Project root: /home/ranjan/deacon_project
+Output root: data/outputs/finverisql/eval_publication_20260706_154755
+Preserved existing run metadata and wrote resume metadata to data/outputs/finverisql/eval_publication_20260706_154755/debug/run_resume_20260715_083419.json
+
+[2026-07-15T08:34:19Z] python3 -m src.baseline.baseline_runner --model qwen --backend ollama --ollama-model-name qwen2.5-coder:7b-instruct --temperature 0 --seed 42 --timeout 300 --max-new-tokens 128 --split validation --prompt-setting few_shot --data-path data/booksql/booksql_normalized.jsonl --db-path data/booksql/accounting.sqlite --schema-path data/booksql/schema.txt --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+Loading BookSQL inference records...
+Split     : validation
+Loading BookSQL train records for few-shot examples...
+Few-shot examples: easy=booksql_000003, medium=booksql_000004, hard=booksql_000000
+Rows      : 7605
+Output    : data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+Using Qwen baseline through Ollama...
+Ollama model: qwen2.5-coder:7b-instruct
+Already completed for this output file: 7605
+  0%|          | 0/7605 [00:00<?, ?it/s]100%|██████████| 7605/7605 [00:00<00:00, 1799181.11it/s]
+Saved results to data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation.jsonl
+cache-adopted: evaluation
+Reusing cached baseline SQL evaluation.
+cache-adopted: asa
+Reusing cached baseline ASA evaluation.
+
+[2026-07-15T08:34:21Z] python3 -m src.baseline.generic_refine.self_refine --input-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine.jsonl --schema-path data/booksql/schema.txt --model-name llama3.1:8b --backend ollama --temperature 0 --num-predict 768 --timeout 300 --workers 4
