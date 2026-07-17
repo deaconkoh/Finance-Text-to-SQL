@@ -25,7 +25,7 @@ class RewardConfig:
     asa_bonus: float = 0.5
     corruption_penalty: float = -2.0
     invalid_penalty: float = -1.0
-    unchanged_wrong_penalty: float = -0.25
+    remaining_wrong_penalty: float = -0.25
     _schema_annotations: dict[str, Any] | None = field(default=None, init=False, repr=False)
 
 
@@ -39,8 +39,8 @@ class RLConfig:
     base_model: str = DEFAULT_LLAMA31_8B_BASE_MODEL
     max_new_tokens: int = 768
     learning_rate: float = 1e-6
-    batch_size: int = 4
-    mini_batch_size: int = 4
+    batch_size: int = 8
+    mini_batch_size: int = 1
     ppo_epochs: int = 1
     load_in_4bit: bool = True
     dataset_num_proc: int = 4
@@ -68,10 +68,7 @@ def compute_repair_reward(
     if not repaired_sql or parse_error:
         return reward_config.invalid_penalty
 
-    original_sql = str(example.get("original_generated_sql") or "")
     original_group = example.get("evaluation_group")
-    if original_group != GROUP_A and repaired_sql.strip() == original_sql.strip():
-        return reward_config.unchanged_wrong_penalty
 
     repaired_ok, repaired_result = _execute_sql(reward_config.db_path, repaired_sql)
     gold_ok, gold_result = _execute_sql(reward_config.db_path, str(example.get("gold_sql") or ""))
@@ -79,6 +76,9 @@ def compute_repair_reward(
         return reward_config.invalid_penalty
 
     ex_correct = repaired_result == gold_result
+    if original_group != GROUP_A and not ex_correct:
+        return reward_config.remaining_wrong_penalty
+
     reward = 0.0
     if original_group == GROUP_A and not ex_correct:
         reward += reward_config.corruption_penalty

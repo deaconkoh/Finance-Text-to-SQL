@@ -13,11 +13,13 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from src.eval.evaluate_baseline_sql import GROUP_A, GROUP_B
+from src.eval.evaluate_baseline_sql import GROUP_A, GROUP_B, GROUP_C
+import src.repair_learning.rl as rl
 from src.repair_learning.data import build_learning_examples
 from src.repair_learning.generate import OllamaRepairGenerator, generate_repair_rows
 from src.repair_learning.prompting import parse_repaired_sql_from_text
 from src.repair_learning.rl import RewardConfig, compute_repair_reward, compute_repair_rewards
+from scripts.dev.train_rl_repairer import parse_args as parse_rl_training_args
 from scripts.dev.build_repair_strategy_ablation_table import build_rows, write_outputs
 
 
@@ -132,7 +134,7 @@ def test_parse_repaired_sql_from_text_accepts_json_and_plain_sql() -> None:
     assert error is None
 
 
-def test_reward_penalizes_invalid_unchanged_wrong_and_corruption(tmp_path: Path) -> None:
+def test_reward_outcome_matrix(tmp_path: Path, monkeypatch) -> None:
     db_path = tmp_path / "test.sqlite"
     with sqlite3.connect(db_path) as conn:
         conn.execute("CREATE TABLE t(x INTEGER)")
@@ -153,8 +155,16 @@ def test_reward_penalizes_invalid_unchanged_wrong_and_corruption(tmp_path: Path)
     }
     assert compute_repair_reward(wrong_example, "", reward_config) == reward_config.invalid_penalty
     assert (
+        compute_repair_reward(wrong_example, '{"repaired_sql": "SELECT missing FROM t"}', reward_config)
+        == reward_config.invalid_penalty
+    )
+    assert (
         compute_repair_reward(wrong_example, '{"repaired_sql": "SELECT 2"}', reward_config)
-        == reward_config.unchanged_wrong_penalty
+        == reward_config.remaining_wrong_penalty
+    )
+    assert (
+        compute_repair_reward(wrong_example, '{"repaired_sql": "SELECT 3"}', reward_config)
+        == reward_config.remaining_wrong_penalty
     )
 
     correct_example = {
@@ -163,16 +173,69 @@ def test_reward_penalizes_invalid_unchanged_wrong_and_corruption(tmp_path: Path)
         "original_generated_sql": "SELECT 1",
         "gold_sql": "SELECT 1",
     }
+    monkeypatch.setattr(rl, "evaluate_asa_row", lambda *_args, **_kwargs: {"asa_strict": 0})
+    assert (
+        compute_repair_reward(wrong_example, '{"repaired_sql": "SELECT 1"}', reward_config)
+        == reward_config.correction_reward
+    )
     assert (
         compute_repair_reward(correct_example, '{"repaired_sql": "SELECT 2"}', reward_config)
         == reward_config.corruption_penalty
+    )
+    assert (
+        compute_repair_reward(
+            {**wrong_example, "evaluation_group": GROUP_C},
+            '{"repaired_sql": "SELECT 3"}',
+            reward_config,
+        )
+        == reward_config.remaining_wrong_penalty
+    )
+
+    monkeypatch.setattr(rl, "evaluate_asa_row", lambda *_args, **_kwargs: {"asa_strict": 1})
+    assert (
+        compute_repair_reward(wrong_example, '{"repaired_sql": "SELECT 1"}', reward_config)
+        == reward_config.correction_reward + reward_config.asa_bonus
+    )
+    assert (
+        compute_repair_reward(correct_example, '{"repaired_sql": "SELECT 1"}', reward_config)
+        == reward_config.asa_bonus
     )
     assert compute_repair_rewards(
         [wrong_example, correct_example],
         ['{"repaired_sql": "SELECT 2"}', '{"repaired_sql": "SELECT 2"}'],
         reward_config,
         workers=2,
-    ) == [reward_config.unchanged_wrong_penalty, reward_config.corruption_penalty]
+    ) == [reward_config.remaining_wrong_penalty, reward_config.corruption_penalty]
+
+
+def test_rl_training_defaults(monkeypatch) -> None:
+    config = rl.RLConfig(
+        train_jsonl="train.jsonl",
+        sft_adapter_path="sft_adapter",
+        output_dir="rl_adapter",
+        db_path="booksql.sqlite",
+        schema_annotations_path="schema.json",
+    )
+    assert config.learning_rate == 1e-6
+    assert config.batch_size == 8
+    assert config.mini_batch_size == 1
+    assert config.ppo_epochs == 1
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "train_rl_repairer.py",
+            "--train-jsonl", "train.jsonl",
+            "--sft-adapter-path", "sft_adapter",
+            "--output-dir", "rl_adapter",
+        ],
+    )
+    args = parse_rl_training_args()
+    assert args.learning_rate == 1e-6
+    assert args.batch_size == 8
+    assert args.mini_batch_size == 1
+    assert args.ppo_epochs == 1
 
 
 def test_repair_strategy_table_has_requested_columns(tmp_path: Path) -> None:
