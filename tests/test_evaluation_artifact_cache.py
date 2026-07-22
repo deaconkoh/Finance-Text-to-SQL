@@ -149,6 +149,68 @@ def test_baseline_evaluation_cache_misses_when_cached_sql_differs(tmp_path: Path
     assert "SQL does not match" in result.stdout
 
 
+def test_asa_cache_allows_group_d_filtered_row_output(tmp_path: Path) -> None:
+    input_jsonl = tmp_path / "baseline_evaluated.jsonl"
+    asa_rows = tmp_path / "asa_rows.jsonl"
+    asa_json = tmp_path / "asa_metrics.json"
+    asa_md = tmp_path / "asa_metrics.md"
+    db_path = tmp_path / "booksql.sqlite"
+    schema_path = tmp_path / "schema.json"
+    manifest = tmp_path / "asa_manifest.json"
+
+    write_jsonl(
+        input_jsonl,
+        [
+            {"question_id": "q1", "evaluation_group": "A_correct_executable"},
+            {"question_id": "q2", "evaluation_group": "B_wrong_executable"},
+            {"question_id": "q3", "evaluation_group": "D_ambiguous"},
+        ],
+    )
+    write_jsonl(
+        asa_rows,
+        [
+            {"question_id": "q1"},
+            {"question_id": "q2"},
+        ],
+    )
+    asa_json.write_text(
+        json.dumps(
+            {
+                "joined_question_ids": 2,
+                "group_d_filtered_question_ids": 1,
+                "sets": [{"label": "before", "total_rows": 2}],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    asa_md.write_text("# ASA\n", encoding="utf-8")
+    db_path.write_bytes(b"database")
+    schema_path.write_text("{}\n", encoding="utf-8")
+    manifest.write_text('{"old": "shape"}\n', encoding="utf-8")
+
+    command = [
+        sys.executable,
+        str(CACHE_SCRIPT),
+        "--stage", "asa",
+        "--evaluation-kind", "baseline",
+        "--input-jsonl", str(input_jsonl),
+        "--db-path", str(db_path),
+        "--schema-path", str(schema_path),
+        "--manifest", str(manifest),
+        "--output-jsonl", str(asa_rows),
+        "--metrics-json", str(asa_json),
+        "--metrics-md", str(asa_md),
+        "--row-output-jsonl", str(asa_rows),
+    ]
+
+    first = subprocess.run(command, check=True, capture_output=True, text=True)
+    second = subprocess.run(command, check=True, capture_output=True, text=True)
+
+    assert "cache-adopted: refreshed stale manifest" in first.stdout
+    assert "cache-hit: asa" in second.stdout
+
+
 def test_ablation_launcher_caches_generic_final_evaluations() -> None:
     launcher = (PROJECT_ROOT / "2_run_ablations.sh").read_text(encoding="utf-8")
 

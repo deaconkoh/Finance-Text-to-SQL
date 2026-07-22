@@ -51,6 +51,25 @@ def sql_signature(row: dict[str, Any]) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def validate_asa_metrics(path: Path, max_joined_question_ids: int) -> None:
+    metrics = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(metrics, dict):
+        raise ValueError("Cached ASA metrics JSON is not an object")
+
+    joined = metrics.get("joined_question_ids")
+    filtered = metrics.get("group_d_filtered_question_ids")
+    sets = metrics.get("sets")
+
+    if not isinstance(joined, int) or joined < 0:
+        raise ValueError("Cached ASA metrics joined_question_ids is invalid")
+    if joined > max_joined_question_ids:
+        raise ValueError("Cached ASA metrics joined_question_ids exceeds input rows")
+    if not isinstance(filtered, int) or filtered < 0:
+        raise ValueError("Cached ASA metrics group_d_filtered_question_ids is invalid")
+    if not isinstance(sets, list) or not sets:
+        raise ValueError("Cached ASA metrics sets are missing")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", choices=["evaluation", "asa"], required=True)
@@ -151,10 +170,11 @@ def validate_outputs(args: argparse.Namespace, data: dict[str, Any]) -> None:
             if total != len(output_ids):
                 raise ValueError("Cached metrics total_examples does not match output rows")
 
-    if args.stage == "asa" and args.row_output_jsonl:
-        row_ids = read_jsonl_ids(Path(args.row_output_jsonl))
-        if row_ids != data["input"]["question_ids"]:
-            raise ValueError("Cached ASA row output question IDs do not match the input JSONL")
+    if args.stage == "asa" and args.metrics_json:
+        validate_asa_metrics(
+            Path(args.metrics_json),
+            max_joined_question_ids=len(data["input"]["question_ids"]),
+        )
 
 
 def main() -> None:
