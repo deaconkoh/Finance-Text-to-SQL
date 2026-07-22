@@ -39,6 +39,7 @@ FINVERISQL_VERIFY_WORKERS="${FINVERISQL_VERIFY_WORKERS:-1}"
 FINVERISQL_REPAIR_WORKERS="${FINVERISQL_REPAIR_WORKERS:-1}"
 RUN_REPAIR_STRATEGY_ABLATION="${RUN_REPAIR_STRATEGY_ABLATION:-1}"
 FORCE_BASELINE_EVALUATION="${FORCE_BASELINE_EVALUATION:-0}"
+FORCE_REFINEMENT_EVALUATION="${FORCE_REFINEMENT_EVALUATION:-0}"
 SFT_ADAPTER_PATH="${SFT_ADAPTER_PATH:-}"
 RL_ADAPTER_PATH="${RL_ADAPTER_PATH:-}"
 SFT_ADAPTER_URL="${SFT_ADAPTER_URL:-}"
@@ -190,6 +191,70 @@ run_cmd_logged() {
   } 2>&1 | tee -a "$log_path"
 }
 
+run_cached_final_evaluation() {
+  local stage_log="$1"
+  local input_jsonl="$2"
+  local output_jsonl="$3"
+  local metrics_json="$4"
+  local metrics_md="$5"
+  local adapted_jsonl="$6"
+  local manifest="$7"
+
+  if [[ "$FORCE_REFINEMENT_EVALUATION" != "1" ]] && python3 scripts/dev/baseline_evaluation_cache.py \
+    --stage evaluation --evaluation-kind final \
+    --input-jsonl "$input_jsonl" --db-path "$DB_PATH" --schema-path "$SCHEMA_JSON" \
+    --manifest "$manifest" --output-jsonl "$output_jsonl" \
+    --metrics-json "$metrics_json" --metrics-md "$metrics_md" \
+    --required-output "$adapted_jsonl"; then
+    echo "Reusing cached final SQL evaluation: $output_jsonl"
+    return
+  fi
+
+  run_cmd_logged "$stage_log" python3 -m src.eval.evaluate_final_sql \
+    --input-jsonl "$input_jsonl" --output-jsonl "$output_jsonl" \
+    --metrics-json "$metrics_json" --metrics-md "$metrics_md" \
+    --adapted-jsonl "$adapted_jsonl" --db-path "$DB_PATH" --workers "$WORKERS"
+
+  python3 scripts/dev/baseline_evaluation_cache.py \
+    --stage evaluation --evaluation-kind final \
+    --input-jsonl "$input_jsonl" --db-path "$DB_PATH" --schema-path "$SCHEMA_JSON" \
+    --manifest "$manifest" --output-jsonl "$output_jsonl" \
+    --metrics-json "$metrics_json" --metrics-md "$metrics_md" \
+    --required-output "$adapted_jsonl" --refresh
+}
+
+run_cached_asa_evaluation() {
+  local stage_log="$1"
+  local before_jsonl="$2"
+  local after_jsonl="$3"
+  local asa_json="$4"
+  local asa_md="$5"
+  local asa_rows="$6"
+  local manifest="$7"
+
+  if [[ "$FORCE_REFINEMENT_EVALUATION" != "1" ]] && python3 scripts/dev/baseline_evaluation_cache.py \
+    --stage asa --evaluation-kind final \
+    --input-jsonl "$after_jsonl" --before-jsonl "$before_jsonl" --after-jsonl "$after_jsonl" \
+    --db-path "$DB_PATH" --schema-path "$SCHEMA_JSON" --manifest "$manifest" \
+    --output-jsonl "$asa_rows" --metrics-json "$asa_json" --metrics-md "$asa_md" \
+    --row-output-jsonl "$asa_rows"; then
+    echo "Reusing cached ASA evaluation: $asa_json"
+    return
+  fi
+
+  run_cmd_logged "$stage_log" python3 -m src.eval.evaluate_asa \
+    --before-jsonl "$before_jsonl" --after-jsonl "$after_jsonl" \
+    --schema-path "$SCHEMA_JSON" --output-json "$asa_json" --output-md "$asa_md" \
+    --row-output-jsonl "$asa_rows"
+
+  python3 scripts/dev/baseline_evaluation_cache.py \
+    --stage asa --evaluation-kind final \
+    --input-jsonl "$after_jsonl" --before-jsonl "$before_jsonl" --after-jsonl "$after_jsonl" \
+    --db-path "$DB_PATH" --schema-path "$SCHEMA_JSON" --manifest "$manifest" \
+    --output-jsonl "$asa_rows" --metrics-json "$asa_json" --metrics-md "$asa_md" \
+    --row-output-jsonl "$asa_rows" --refresh
+}
+
 check_ollama_model() {
   local model_name="$1"
   python3 - "$model_name" <<'PY'
@@ -339,7 +404,7 @@ else
     --manifest "$BASELINE_EVAL_MANIFEST" \
     --output-jsonl "$BASELINE_EVAL_JSONL" \
     --metrics-json "$BASELINE_METRICS_JSON" \
-    --workers "$WORKERS"
+    --workers "$WORKERS" --refresh
 fi
 
 if [[ "$FORCE_BASELINE_EVALUATION" != "1" ]] && python3 scripts/dev/baseline_evaluation_cache.py \
@@ -371,7 +436,7 @@ else
     --metrics-json "$BASELINE_ASA_JSON" \
     --metrics-md "$BASELINE_ASA_MD" \
     --row-output-jsonl "$BASELINE_ASA_ROWS" \
-    --workers "$WORKERS"
+    --workers "$WORKERS" --refresh
 fi
 
 run_generic_refine() {
@@ -388,6 +453,8 @@ run_generic_refine() {
   local asa_json="${out_dir}/${key}_asa_metrics.json"
   local asa_md="${out_dir}/${key}_asa_metrics.md"
   local asa_rows="${out_dir}/${key}_asa_rows.jsonl"
+  local final_eval_manifest="${out_dir}/${key}_final_evaluation_manifest.json"
+  local asa_manifest="${out_dir}/${key}_asa_manifest.json"
   local stage_log="${out_dir}/run.log"
 
   run_cmd_logged "$stage_log" python3 -m "$module" \
@@ -401,22 +468,13 @@ run_generic_refine() {
     --timeout "$TIMEOUT" \
     --workers "$GENERIC_REFINE_WORKERS"
 
-  run_cmd_logged "$stage_log" python3 -m src.eval.evaluate_final_sql \
-    --input-jsonl "$refine_jsonl" \
-    --output-jsonl "$final_eval_jsonl" \
-    --metrics-json "$final_metrics_json" \
-    --metrics-md "$final_metrics_md" \
-    --adapted-jsonl "$adapted_jsonl" \
-    --db-path "$DB_PATH" \
-    --workers "$WORKERS"
+  run_cached_final_evaluation \
+    "$stage_log" "$refine_jsonl" "$final_eval_jsonl" "$final_metrics_json" \
+    "$final_metrics_md" "$adapted_jsonl" "$final_eval_manifest"
 
-  run_cmd_logged "$stage_log" python3 -m src.eval.evaluate_asa \
-    --before-jsonl "$BASELINE_EVAL_JSONL" \
-    --after-jsonl "$final_eval_jsonl" \
-    --schema-path "$SCHEMA_JSON" \
-    --output-json "$asa_json" \
-    --output-md "$asa_md" \
-    --row-output-jsonl "$asa_rows"
+  run_cached_asa_evaluation \
+    "$stage_log" "$BASELINE_EVAL_JSONL" "$final_eval_jsonl" "$asa_json" \
+    "$asa_md" "$asa_rows" "$asa_manifest"
 }
 
 run_generic_refine "generic_self_refine" "src.baseline.generic_refine.self_refine"
@@ -455,6 +513,8 @@ run_finverisql_variant() {
   local asa_json="${out_dir}/${key}_asa_metrics.json"
   local asa_md="${out_dir}/${key}_asa_metrics.md"
   local asa_rows="${out_dir}/${key}_asa_rows.jsonl"
+  local final_eval_manifest="${out_dir}/${key}_final_evaluation_manifest.json"
+  local asa_manifest="${out_dir}/${key}_asa_manifest.json"
 
   local intent_cache_args=()
   if [[ "$intent_mode" == "nl_only" ]]; then
@@ -502,22 +562,13 @@ run_finverisql_variant() {
     --timeout "$TIMEOUT" \
     --workers "$FINVERISQL_REPAIR_WORKERS"
 
-  run_cmd python3 -m src.eval.evaluate_final_sql \
-    --input-jsonl "$repair_jsonl" \
-    --output-jsonl "$final_eval_jsonl" \
-    --metrics-json "$final_metrics_json" \
-    --metrics-md "$final_metrics_md" \
-    --adapted-jsonl "$adapted_jsonl" \
-    --db-path "$DB_PATH" \
-    --workers "$WORKERS"
+  run_cached_final_evaluation \
+    "$LOG_PATH" "$repair_jsonl" "$final_eval_jsonl" "$final_metrics_json" \
+    "$final_metrics_md" "$adapted_jsonl" "$final_eval_manifest"
 
-  run_cmd python3 -m src.eval.evaluate_asa \
-    --before-jsonl "$BASELINE_EVAL_JSONL" \
-    --after-jsonl "$final_eval_jsonl" \
-    --schema-path "$SCHEMA_JSON" \
-    --output-json "$asa_json" \
-    --output-md "$asa_md" \
-    --row-output-jsonl "$asa_rows"
+  run_cached_asa_evaluation \
+    "$LOG_PATH" "$BASELINE_EVAL_JSONL" "$final_eval_jsonl" "$asa_json" \
+    "$asa_md" "$asa_rows" "$asa_manifest"
 }
 
 run_finverisql_variant "full" "nl_only" "compact" "probe" "specialized_chain"

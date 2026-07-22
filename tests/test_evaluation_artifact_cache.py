@@ -1,0 +1,83 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+CACHE_SCRIPT = PROJECT_ROOT / "scripts/dev/baseline_evaluation_cache.py"
+
+
+def write_jsonl(path: Path, rows: list[dict]) -> None:
+    path.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+
+def cache_command(tmp_path: Path, manifest: Path) -> list[str]:
+    input_jsonl = tmp_path / "repairs.jsonl"
+    output_jsonl = tmp_path / "final_evaluated.jsonl"
+    metrics_json = tmp_path / "metrics.json"
+    adapted_jsonl = tmp_path / "adapted.jsonl"
+    db_path = tmp_path / "booksql.sqlite"
+    schema_path = tmp_path / "schema.json"
+    return [
+        sys.executable,
+        str(CACHE_SCRIPT),
+        "--stage", "evaluation",
+        "--evaluation-kind", "final",
+        "--input-jsonl", str(input_jsonl),
+        "--db-path", str(db_path),
+        "--schema-path", str(schema_path),
+        "--manifest", str(manifest),
+        "--output-jsonl", str(output_jsonl),
+        "--metrics-json", str(metrics_json),
+        "--required-output", str(adapted_jsonl),
+    ]
+
+
+def test_final_evaluation_cache_reuses_valid_artifacts(tmp_path: Path) -> None:
+    rows = [{"question_id": "q1"}, {"question_id": "q2"}]
+    write_jsonl(tmp_path / "repairs.jsonl", rows)
+    write_jsonl(tmp_path / "final_evaluated.jsonl", rows)
+    write_jsonl(tmp_path / "adapted.jsonl", rows)
+    (tmp_path / "metrics.json").write_text('{"total_examples": 2}\n', encoding="utf-8")
+    (tmp_path / "booksql.sqlite").write_bytes(b"database")
+    (tmp_path / "schema.json").write_text("{}\n", encoding="utf-8")
+
+    manifest = tmp_path / "final_evaluation_manifest.json"
+    first = subprocess.run(cache_command(tmp_path, manifest), check=True, capture_output=True, text=True)
+    second = subprocess.run(cache_command(tmp_path, manifest), check=True, capture_output=True, text=True)
+
+    assert "cache-adopted: evaluation" in first.stdout
+    assert "cache-hit: evaluation" in second.stdout
+
+
+def test_final_evaluation_cache_misses_when_refinement_output_changes(tmp_path: Path) -> None:
+    rows = [{"question_id": "q1"}]
+    write_jsonl(tmp_path / "repairs.jsonl", rows)
+    write_jsonl(tmp_path / "final_evaluated.jsonl", rows)
+    write_jsonl(tmp_path / "adapted.jsonl", rows)
+    (tmp_path / "metrics.json").write_text('{"total_examples": 1}\n', encoding="utf-8")
+    (tmp_path / "booksql.sqlite").write_bytes(b"database")
+    (tmp_path / "schema.json").write_text("{}\n", encoding="utf-8")
+
+    manifest = tmp_path / "final_evaluation_manifest.json"
+    subprocess.run(cache_command(tmp_path, manifest), check=True, capture_output=True, text=True)
+    write_jsonl(tmp_path / "repairs.jsonl", [{"question_id": "q1", "changed": True}])
+    rerun = subprocess.run(cache_command(tmp_path, manifest), capture_output=True, text=True)
+
+    assert rerun.returncode == 1
+    assert "configuration" in rerun.stdout
+
+
+def test_ablation_launcher_caches_generic_final_evaluations() -> None:
+    launcher = (PROJECT_ROOT / "2_run_ablations.sh").read_text(encoding="utf-8")
+
+    assert "run_cached_final_evaluation" in launcher
+    assert "run_cached_asa_evaluation" in launcher
+    assert 'run_generic_refine "generic_self_refine"' in launcher
+    assert 'run_generic_refine "generic_execution_guided_refine"' in launcher

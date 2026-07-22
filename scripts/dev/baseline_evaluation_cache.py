@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate or record reusable baseline evaluation stage artifacts."""
+"""Validate or record reusable SQL evaluation and ASA stage artifacts."""
 
 from __future__ import annotations
 
@@ -36,7 +36,10 @@ def read_jsonl_ids(path: Path) -> list[str]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", choices=["evaluation", "asa"], required=True)
-    parser.add_argument("--input-jsonl", required=True)
+    parser.add_argument("--evaluation-kind", choices=["baseline", "final"], default="baseline")
+    parser.add_argument("--input-jsonl", default=None)
+    parser.add_argument("--before-jsonl", default=None)
+    parser.add_argument("--after-jsonl", default=None)
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--schema-path", required=True)
     parser.add_argument("--manifest", required=True)
@@ -44,25 +47,48 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--metrics-json", default=None)
     parser.add_argument("--metrics-md", default=None)
     parser.add_argument("--row-output-jsonl", default=None)
-    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--required-output", action="append", default=[])
+    parser.add_argument("--workers", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--refresh", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args()
 
 
 def expected(args: argparse.Namespace) -> dict[str, Any]:
+    if not args.input_jsonl:
+        raise ValueError("--input-jsonl is required.")
     input_path = Path(args.input_jsonl)
+    before_path = Path(args.before_jsonl) if args.before_jsonl else input_path
+    after_path = Path(args.after_jsonl) if args.after_jsonl else None
     expected_data: dict[str, Any] = {
         "stage": args.stage,
-        "input_path": str(input_path),
-        "input_sha256": sha256(input_path),
-        "input_question_ids": read_jsonl_ids(input_path),
+        "evaluation_kind": args.evaluation_kind,
+        "input": {
+            "path": str(input_path),
+            "sha256": sha256(input_path),
+            "question_ids": read_jsonl_ids(input_path),
+        },
+        "before": {
+            "path": str(before_path),
+            "sha256": sha256(before_path),
+            "question_ids": read_jsonl_ids(before_path),
+        },
+        "after": (
+            {
+                "path": str(after_path),
+                "sha256": sha256(after_path),
+                "question_ids": read_jsonl_ids(after_path),
+            }
+            if after_path
+            else None
+        ),
         "db_sha256": sha256(Path(args.db_path)),
         "schema_sha256": sha256(Path(args.schema_path)),
-        "workers": args.workers,
         "outputs": {
             "output_jsonl": args.output_jsonl,
             "metrics_json": args.metrics_json,
             "metrics_md": args.metrics_md,
             "row_output_jsonl": args.row_output_jsonl,
+            "required_outputs": args.required_output,
         },
     }
     return expected_data
@@ -76,6 +102,7 @@ def required_outputs(args: argparse.Namespace) -> list[Path]:
         outputs.append(Path(args.metrics_md))
     if args.row_output_jsonl:
         outputs.append(Path(args.row_output_jsonl))
+    outputs.extend(Path(path) for path in args.required_output)
     return outputs
 
 
@@ -87,7 +114,7 @@ def validate_outputs(args: argparse.Namespace, data: dict[str, Any]) -> None:
 
     if args.stage == "evaluation":
         output_ids = read_jsonl_ids(Path(args.output_jsonl))
-        if output_ids != data["input_question_ids"]:
+        if output_ids != data["input"]["question_ids"]:
             raise ValueError("Cached output question IDs do not match the input JSONL")
 
         if args.metrics_json:
@@ -107,7 +134,7 @@ def main() -> None:
         print(f"cache-miss: {exc}")
         raise SystemExit(1) from exc
 
-    if manifest_path.is_file():
+    if manifest_path.is_file() and not args.refresh:
         try:
             existing = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -121,7 +148,7 @@ def main() -> None:
 
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    print(f"cache-adopted: {args.stage}")
+    print(f"cache-refreshed: {args.stage}" if args.refresh else f"cache-adopted: {args.stage}")
 
 
 if __name__ == "__main__":
