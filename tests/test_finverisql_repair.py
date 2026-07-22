@@ -363,6 +363,196 @@ def test_classify_candidate_row_filters_expected_group_b_cases() -> None:
     assert classify_candidate_row(verifier_group_c) == (True, "non_executable", None)
 
 
+def test_repair_cli_resumes_skipped_and_candidate_rows(monkeypatch, tmp_path: Path) -> None:
+    run_script = importlib.import_module("scripts.run_finverisql_repair")
+    input_path = tmp_path / "verify.jsonl"
+    output_path = tmp_path / "repairs.jsonl"
+    schema_path = tmp_path / "schema.txt"
+    schema_path.write_text("CREATE TABLE invoices(amount REAL);", encoding="utf-8")
+
+    accepted_group_a = {
+        "question_id": "q_a",
+        "question": "How many rows are there?",
+        "generated_sql": "SELECT COUNT(*) FROM invoices;",
+        "evaluation_group": "A_correct_executable",
+        "status": "success",
+        "intent_representation": {"measure": "count"},
+        "execution_profile": '{"status":"OK"}',
+        "verification": {
+            "answers_question": True,
+            "should_abstain": False,
+            "mismatch_type": None,
+            "stage2_failed_evidence": [],
+            "repair_hint": None,
+        },
+    }
+    rejected_group_b = {
+        "question_id": "q_b",
+        "question": "What is total amount?",
+        "generated_sql": "SELECT COUNT(*) FROM invoices;",
+        "evaluation_group": "B_wrong_executable",
+        "status": "success",
+        "intent_representation": {"measure": "sum"},
+        "execution_profile": '{"status":"OK"}',
+        "verification": {
+            "answers_question": False,
+            "should_abstain": False,
+            "mismatch_type": "financial_measure_error",
+            "stage2_failed_evidence": ["Used COUNT(*)"],
+            "repair_hint": "Use SUM(amount).",
+        },
+    }
+    group_c = {
+        "question_id": "q_c",
+        "question": "What is total amount?",
+        "generated_sql": "SELECT SUM(amount FROM invoices",
+        "evaluation_group": "C_non_executable",
+        "status": "success",
+    }
+    input_path.write_text(
+        "\n".join(json.dumps(row) for row in (accepted_group_a, rejected_group_b, group_c)) + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        run_script,
+        "build_verifier_generate_fn",
+        lambda **_kwargs: (lambda _prompt: "```sql\nSELECT SUM(amount) FROM invoices;\n```"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_finverisql_repair.py",
+            "--input-path",
+            str(input_path),
+            "--output-path",
+            str(output_path),
+            "--schema-path",
+            str(schema_path),
+            "--repair-model-name",
+            "repair-model",
+            "--repair-backend",
+            "ollama",
+            "--verifier-backend",
+            "ollama",
+            "--workers",
+            "2",
+        ],
+    )
+
+    run_script.main()
+    first_rows = [
+        json.loads(line)
+        for line in output_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(first_rows) == 3
+    first_by_id = {row["question_id"]: row for row in first_rows}
+    assert set(first_by_id) == {"q_a", "q_b", "q_c"}
+    assert first_by_id["q_a"]["status"] == "skipped"
+    assert first_by_id["q_a"]["repair_mode"] == "skipped"
+
+    run_script.main()
+    second_rows = [
+        json.loads(line)
+        for line in output_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert second_rows == first_rows
+
+
+def test_repair_cli_resumes_legacy_skipped_rows_without_repair_mode(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    run_script = importlib.import_module("scripts.run_finverisql_repair")
+    input_path = tmp_path / "verify.jsonl"
+    output_path = tmp_path / "repairs.jsonl"
+    schema_path = tmp_path / "schema.txt"
+    schema_text = "CREATE TABLE invoices(amount REAL);"
+    schema_path.write_text(schema_text, encoding="utf-8")
+
+    row = {
+        "question_id": "q_a",
+        "question": "How many rows are there?",
+        "generated_sql": "SELECT COUNT(*) FROM invoices;",
+        "evaluation_group": "A_correct_executable",
+        "status": "success",
+        "intent_representation": {"measure": "count"},
+        "execution_profile": '{"status":"OK"}',
+        "verification": {
+            "answers_question": True,
+            "should_abstain": False,
+            "mismatch_type": None,
+            "stage2_failed_evidence": [],
+            "repair_hint": None,
+        },
+    }
+    input_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    repair_context_hash = stable_context_hash(
+        {
+            "schema_text": schema_text,
+            "intent_mode": "nl_only",
+            "repair_context_version": run_script.REPAIR_CONTEXT_VERSION,
+            "semantic_repair_framework": "single",
+            "verifier_model_name": None,
+            "verifier_backend": None,
+            "profile_mode": None,
+            "probing_mode": None,
+            "max_probes": None,
+        }
+    )
+    legacy_skipped = build_attempt_output_row(
+        source_row=row,
+        repair_request=None,
+        repair_result=None,
+        intent_representation_used=row["intent_representation"],
+        repair_mode=None,
+        status="skipped",
+        skip_reason="verification_not_rejected",
+        repair_model="repair-model",
+        intent_mode="nl_only",
+        repair_context_hash=repair_context_hash,
+    )
+    output_path.write_text(json.dumps(legacy_skipped) + "\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        run_script,
+        "build_verifier_generate_fn",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("model should not be built")),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_finverisql_repair.py",
+            "--input-path",
+            str(input_path),
+            "--output-path",
+            str(output_path),
+            "--schema-path",
+            str(schema_path),
+            "--repair-model-name",
+            "repair-model",
+            "--repair-backend",
+            "ollama",
+            "--verifier-backend",
+            "ollama",
+        ],
+    )
+
+    run_script.main()
+
+    rows = [
+        json.loads(line)
+        for line in output_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert rows == [legacy_skipped]
+
+
 def test_specialized_routing_rules() -> None:
     for mismatch_type in (
         "financial_measure_error",

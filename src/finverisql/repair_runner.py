@@ -1729,11 +1729,15 @@ def load_completed_keys(output_path: str | Path) -> set[tuple[str, str, str, str
             except Exception:
                 continue
 
+            repair_mode = row.get("repair_mode")
+            if row.get("status") == "skipped" and not repair_mode:
+                repair_mode = "skipped"
+
             completed.add(
                 (
                     str(row.get("question_id") or row.get("id") or ""),
                     str(row.get("original_generated_sql_hash") or ""),
-                    str(row.get("repair_mode") or ""),
+                    str(repair_mode or ""),
                     str(row.get("repair_model") or ""),
                     str(row.get("intent_mode") or ""),
                     str(row.get("repair_context_hash") or ""),

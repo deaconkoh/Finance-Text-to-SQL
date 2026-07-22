@@ -87,6 +87,7 @@ DEFAULT_BACKEND = "mlx-lm"
 REPAIR_CONTEXT_VERSION = "schema_sqlite_v1"
 CHAIN_REPAIR_FRAMEWORKS = {"specialized_chain", "generic_chain"}
 SCHEMA_ANNOTATION_FRAMEWORKS = {"specialized_chain", "generic_chain", "no_reverification"}
+SKIPPED_REPAIR_MODE = "skipped"
 
 
 def parse_args() -> argparse.Namespace:
@@ -197,6 +198,23 @@ def load_schema_text_for_repair(schema_path: str | None) -> str:
     return load_booksql_schema()
 
 
+def get_effective_repair_mode(
+    is_candidate: bool,
+    repair_mode: str | None,
+    semantic_repair_framework: str,
+) -> str:
+    if not is_candidate:
+        return SKIPPED_REPAIR_MODE
+
+    if (
+        repair_mode == "semantic"
+        and semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS
+    ):
+        return semantic_repair_framework
+
+    return repair_mode or "unknown"
+
+
 def main() -> None:
     args = parse_args()
 
@@ -229,37 +247,36 @@ def main() -> None:
     )
 
     completed_keys = load_completed_keys(args.output_path)
-    pending_rows = []
+    pending_indexed: list[tuple[int, dict[str, Any]]] = []
 
-    for row in rows:
+    for input_index, row in enumerate(rows):
         is_candidate, repair_mode, _ = classify_candidate_row(row)
-        run_repair_mode = (
-            args.semantic_repair_framework
-            if args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS
-            and repair_mode == "semantic"
-            else repair_mode
+        run_repair_mode = get_effective_repair_mode(
+            is_candidate=is_candidate,
+            repair_mode=repair_mode,
+            semantic_repair_framework=args.semantic_repair_framework,
         )
         run_key = get_repair_run_key(
             row=row,
-            repair_mode=run_repair_mode or "unknown",
+            repair_mode=run_repair_mode,
             repair_model=args.repair_model_name,
             intent_mode=args.intent_mode,
             repair_context_hash=repair_context_hash,
         )
 
-        if is_candidate and not args.overwrite and run_key in completed_keys:
+        if not args.overwrite and run_key in completed_keys:
             continue
 
-        pending_rows.append(row)
+        pending_indexed.append((input_index, row))
 
     print(f"Input rows selected: {len(rows)}")
-    print(f"Pending repair rows: {len(pending_rows)}")
+    print(f"Pending repair rows: {len(pending_indexed)}")
     print(f"Repair model: {args.repair_model_name} ({args.repair_backend})")
     print(f"Semantic repair framework: {args.semantic_repair_framework}")
     print(f"Intent mode for missing intents: {args.intent_mode}")
     print(f"Concurrent workers: {args.workers}")
 
-    if not pending_rows:
+    if not pending_indexed:
         print("Nothing left to repair.")
         return
 
@@ -300,7 +317,7 @@ def main() -> None:
             output_row = build_attempt_output_row(
                 source_row=row, repair_request=None, repair_result=None,
                 intent_representation_used=row.get("intent_representation") if isinstance(row.get("intent_representation"), dict) else None,
-                repair_mode=repair_mode, status="skipped", skip_reason=skip_reason,
+                repair_mode=SKIPPED_REPAIR_MODE, status="skipped", skip_reason=skip_reason,
                 repair_model=args.repair_model_name, intent_mode=args.intent_mode,
                 repair_context_hash=repair_context_hash,
             )
@@ -382,7 +399,6 @@ def main() -> None:
         output_row["input_index"] = input_index
         return output_row
 
-    pending_indexed = list(enumerate(pending_rows))
     counts = {"attempted": 0, "skipped": 0, "generated": 0, "group_b_attempted": 0, "group_c_attempted": 0}
 
     def commit_row(output_row: dict[str, Any]) -> None:
@@ -437,25 +453,27 @@ def main() -> None:
             finally:
                 progress.close()
 
+    def build_row_run_key(row: dict[str, Any]) -> tuple[str, str, str, str, str, str]:
+        is_candidate, repair_mode, _ = classify_candidate_row(row)
+        return get_repair_run_key(
+            row=row,
+            repair_mode=get_effective_repair_mode(
+                is_candidate=is_candidate,
+                repair_mode=repair_mode,
+                semantic_repair_framework=args.semantic_repair_framework,
+            ),
+            repair_model=args.repair_model_name,
+            intent_mode=args.intent_mode,
+            repair_context_hash=repair_context_hash,
+        )
+
     with exclusive_jsonl_run((args.output_path,)):
         recover_incomplete_jsonl_tail(args.output_path)
         completed_keys = load_completed_keys(args.output_path)
         pending_indexed = [
             (input_index, row)
             for input_index, row in pending_indexed
-            if args.overwrite
-            or get_repair_run_key(
-                row=row,
-                repair_mode=(
-                    args.semantic_repair_framework
-                    if args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS
-                    and classify_candidate_row(row)[1] == "semantic"
-                    else classify_candidate_row(row)[1] or "unknown"
-                ),
-                repair_model=args.repair_model_name,
-                intent_mode=args.intent_mode,
-                repair_context_hash=repair_context_hash,
-            ) not in completed_keys
+            if args.overwrite or build_row_run_key(row) not in completed_keys
         ]
         run_pending_rows()
 
