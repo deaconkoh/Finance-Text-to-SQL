@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from src.utils.resumable_jsonl import append_jsonl_durable
+
 from sqlglot import exp, parse_one
 
 from src.finverisql.compact_semantic_profile import build_verifier_payload
@@ -193,12 +195,7 @@ def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
 
 
 def append_jsonl(path: str | Path, row: dict[str, Any]) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
-        handle.flush()
+    append_jsonl_durable(path, row)
 
 
 def stable_sql_hash(sql: Any) -> str:

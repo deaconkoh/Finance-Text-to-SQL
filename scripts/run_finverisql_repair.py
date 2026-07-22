@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
+from typing import Any
 
 from tqdm import tqdm
 
@@ -44,6 +46,10 @@ try:
     from src.finverisql.schema_loader import SchemaAnnotationStore
     from src.utils.data_utils import load_booksql_schema
     from src.utils.inference_utils import build_verifier_generate_fn
+    from src.utils.resumable_jsonl import (
+        exclusive_jsonl_run,
+        recover_incomplete_jsonl_tail,
+    )
 except ModuleNotFoundError:
     from finverisql.intent_decomposer import IntentDecomposer
     from finverisql.repair import (
@@ -69,6 +75,10 @@ except ModuleNotFoundError:
     from finverisql.schema_loader import SchemaAnnotationStore
     from utils.data_utils import load_booksql_schema
     from utils.inference_utils import build_verifier_generate_fn
+    from utils.resumable_jsonl import (
+        exclusive_jsonl_run,
+        recover_incomplete_jsonl_tail,
+    )
 
 
 DEFAULT_SCHEMA_PATH = "data/booksql/schema_annotations.json"
@@ -100,6 +110,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--temperature", type=float, default=0.0, help="Model temperature.")
     parser.add_argument("--num-predict", type=int, default=768, help="Maximum generation tokens.")
     parser.add_argument("--timeout", type=int, default=300, help="Ollama HTTP timeout in seconds.")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help=(
+            "Concurrent row workers. Values above one require Ollama for every "
+            "model used by the repair chain."
+        ),
+    )
     parser.add_argument("--limit", type=int, default=None, help="Optional cap on processed input rows.")
     parser.add_argument("--overwrite", action="store_true", help="Disable resume skipping and append duplicate experiment rows.")
     return parser.parse_args()
@@ -181,6 +200,15 @@ def load_schema_text_for_repair(schema_path: str | None) -> str:
 def main() -> None:
     args = parse_args()
 
+    if args.workers < 1:
+        raise ValueError("--workers must be at least 1.")
+    if args.workers > 1 and (
+        args.repair_backend != "ollama" or args.verifier_backend != "ollama"
+    ):
+        raise ValueError(
+            "--workers > 1 requires --repair-backend ollama and --verifier-backend ollama."
+        )
+
     rows = read_jsonl(args.input_path)
     if args.limit is not None:
         rows = rows[: args.limit]
@@ -229,6 +257,7 @@ def main() -> None:
     print(f"Repair model: {args.repair_model_name} ({args.repair_backend})")
     print(f"Semantic repair framework: {args.semantic_repair_framework}")
     print(f"Intent mode for missing intents: {args.intent_mode}")
+    print(f"Concurrent workers: {args.workers}")
 
     if not pending_rows:
         print("Nothing left to repair.")
@@ -265,197 +294,84 @@ def main() -> None:
             schema_store=schema_store,
         )
 
-    counts = {
-        "attempted": 0,
-        "skipped": 0,
-        "generated": 0,
-        "group_b_attempted": 0,
-        "group_c_attempted": 0,
-    }
-
-    for row in tqdm(pending_rows):
+    def process_row(input_index: int, row: dict[str, Any]) -> dict[str, Any]:
         is_candidate, repair_mode, skip_reason = classify_candidate_row(row)
-
         if not is_candidate:
-            counts["skipped"] += 1
             output_row = build_attempt_output_row(
-                source_row=row,
-                repair_request=None,
-                repair_result=None,
+                source_row=row, repair_request=None, repair_result=None,
                 intent_representation_used=row.get("intent_representation") if isinstance(row.get("intent_representation"), dict) else None,
-                repair_mode=repair_mode,
-                status="skipped",
-                skip_reason=skip_reason,
-                repair_model=args.repair_model_name,
-                intent_mode=args.intent_mode,
+                repair_mode=repair_mode, status="skipped", skip_reason=skip_reason,
+                repair_model=args.repair_model_name, intent_mode=args.intent_mode,
                 repair_context_hash=repair_context_hash,
             )
-            append_jsonl(args.output_path, output_row)
-            continue
+            output_row["input_index"] = input_index
+            return output_row
 
-        counts["attempted"] += 1
-        if row.get("evaluation_group") == "B_wrong_executable":
-            counts["group_b_attempted"] += 1
-        elif row.get("evaluation_group") == "C_non_executable":
-            counts["group_c_attempted"] += 1
-
-        intent_representation = (
-            row.get("intent_representation")
-            if isinstance(row.get("intent_representation"), dict)
-            else get_cached_intent(intent_cache, row)
-        )
-
-        repair_request = None
-        repair_result = None
-
-        if intent_representation is None and (
-            repair_mode != "non_executable"
-            or args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS
-        ):
-            if args.require_intent_cache or decomposer is None:
-                repair_result = None
-            else:
+        intent_representation = row.get("intent_representation") if isinstance(row.get("intent_representation"), dict) else get_cached_intent(intent_cache, row)
+        if intent_representation is None and (repair_mode != "non_executable" or args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS):
+            if not args.require_intent_cache and decomposer is not None:
                 try:
                     intent_representation = decomposer.decompose(str(row.get("question") or ""))
                 except Exception:
                     intent_representation = None
 
+        repair_request = None
+        repair_result = None
+        chain_result: dict[str, Any] | None = None
         if repair_mode == "non_executable" and args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS:
             if schema_store is None:
-                chain_result = {
-                    "initial_repair_mode": "non_executable",
-                    "stop_reason": "reverification_failed_or_abstained",
-                    "final_repaired_sql": None,
-                    "final_sql_source": "original_generated_sql",
-                    "scope_check_status": None,
-                    "scope_check_error": f"{args.semantic_repair_framework} requires schema annotations",
-                    "num_repair_attempts": 0,
-                    "repair_attempt_sequence": [],
-                }
+                chain_result = {"initial_repair_mode": "non_executable", "stop_reason": "reverification_failed_or_abstained", "final_repaired_sql": None, "final_sql_source": "original_generated_sql", "scope_check_status": None, "scope_check_error": f"{args.semantic_repair_framework} requires schema annotations", "num_repair_attempts": 0, "repair_attempt_sequence": []}
             else:
                 chain_result = run_non_executable_then_semantic_repair_chain(
-                    row=row,
-                    schema_text=schema_text,
-                    schema_store=schema_store,
-                    repair_generate_fn=repair_generate_fn,
-                    verifier_generate_fn=verifier_generate_fn or (lambda _prompt: ""),
+                    row=row, schema_text=schema_text, schema_store=schema_store,
+                    repair_generate_fn=repair_generate_fn, verifier_generate_fn=verifier_generate_fn or (lambda _prompt: ""),
                     intent_representation=intent_representation if isinstance(intent_representation, dict) else None,
-                    profile_mode=args.profile_mode,
-                    probing_mode=args.probing_mode,
-                    max_probes=args.max_probes,
+                    profile_mode=args.profile_mode, probing_mode=args.probing_mode, max_probes=args.max_probes,
                     semantic_followup_framework=args.semantic_repair_framework,
                     accept_execution_repair_without_reverification=args.semantic_repair_framework == "no_reverification",
                 )
-
             repaired_sql = chain_result.get("final_repaired_sql")
-            repair_result = (
-                SemanticRepairResult(
-                    status="success",
-                    repaired_sql=str(repaired_sql),
-                    edit_summary="Execution-first non-executable repair chain final SQL.",
-                    confidence=None,
-                    raw_output=None,
-                    error=None,
-                )
-                if repaired_sql
-                else None
-            )
+            repair_result = SemanticRepairResult(status="success", repaired_sql=str(repaired_sql), edit_summary="Execution-first non-executable repair chain final SQL.", confidence=None, raw_output=None, error=None) if repaired_sql else None
             output_row = build_attempt_output_row(
-                source_row=row,
-                repair_request=None,
-                repair_result=repair_result,
+                source_row=row, repair_request=None, repair_result=repair_result,
                 intent_representation_used=intent_representation if isinstance(intent_representation, dict) else None,
-                repair_mode="non_executable",
-                status="success",
-                skip_reason=None,
-                repair_model=args.repair_model_name,
-                intent_mode=args.intent_mode,
-                repair_context_hash=repair_context_hash,
+                repair_mode="non_executable", status="success", skip_reason=None,
+                repair_model=args.repair_model_name, intent_mode=args.intent_mode, repair_context_hash=repair_context_hash,
             )
-            output_row.update(chain_result)
-            output_row["semantic_repair_framework"] = args.semantic_repair_framework
-            output_row["verifier_model"] = args.verifier_model_name
-            output_row["verifier_backend"] = args.verifier_backend
-            output_row["profile_mode"] = args.profile_mode
-            output_row["probing_mode"] = args.probing_mode
-            output_row["max_probes"] = args.max_probes
-            append_jsonl(args.output_path, output_row)
-
-            if repaired_sql:
-                counts["generated"] += 1
-
-            continue
-
-        if repair_mode == "semantic" and args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS:
+        elif repair_mode == "semantic" and args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS:
             if schema_store is None:
-                chain_result = {
-                    "stop_reason": "reverification_failed_or_abstained",
-                    "final_repaired_sql": None,
-                    "final_sql_source": "original_generated_sql",
-                    "scope_check_status": None,
-                    "scope_check_error": f"{args.semantic_repair_framework} requires schema annotations",
-                    "num_repair_attempts": 0,
-                    "repair_attempt_sequence": [],
-                }
+                chain_result = {"stop_reason": "reverification_failed_or_abstained", "final_repaired_sql": None, "final_sql_source": "original_generated_sql", "scope_check_status": None, "scope_check_error": f"{args.semantic_repair_framework} requires schema annotations", "num_repair_attempts": 0, "repair_attempt_sequence": []}
+            elif args.semantic_repair_framework == "generic_chain":
+                assert verifier_generate_fn is not None
+                chain_result = run_generic_semantic_repair_chain(row=row, schema_text=schema_text, schema_store=schema_store, repair_generate_fn=repair_generate_fn, verifier_generate_fn=verifier_generate_fn, profile_mode=args.profile_mode, probing_mode=args.probing_mode, max_probes=args.max_probes)
+            elif args.semantic_repair_framework == "no_reverification":
+                chain_result = run_specialized_first_repair_no_reverification(row=row, schema_text=schema_text, schema_store=schema_store, repair_generate_fn=repair_generate_fn, profile_mode=args.profile_mode)
             else:
-                if args.semantic_repair_framework == "generic_chain":
-                    assert verifier_generate_fn is not None
-                    chain_result = run_generic_semantic_repair_chain(
-                        row=row,
-                        schema_text=schema_text,
-                        schema_store=schema_store,
-                        repair_generate_fn=repair_generate_fn,
-                        verifier_generate_fn=verifier_generate_fn,
-                        profile_mode=args.profile_mode,
-                        probing_mode=args.probing_mode,
-                        max_probes=args.max_probes,
-                    )
-                elif args.semantic_repair_framework == "no_reverification":
-                    chain_result = run_specialized_first_repair_no_reverification(
-                        row=row,
-                        schema_text=schema_text,
-                        schema_store=schema_store,
-                        repair_generate_fn=repair_generate_fn,
-                        profile_mode=args.profile_mode,
-                    )
-                else:
-                    assert verifier_generate_fn is not None
-                    chain_result = run_specialized_semantic_repair_chain(
-                        row=row,
-                        schema_text=schema_text,
-                        schema_store=schema_store,
-                        repair_generate_fn=repair_generate_fn,
-                        verifier_generate_fn=verifier_generate_fn,
-                        profile_mode=args.profile_mode,
-                        probing_mode=args.probing_mode,
-                        max_probes=args.max_probes,
-                    )
-
+                assert verifier_generate_fn is not None
+                chain_result = run_specialized_semantic_repair_chain(row=row, schema_text=schema_text, schema_store=schema_store, repair_generate_fn=repair_generate_fn, verifier_generate_fn=verifier_generate_fn, profile_mode=args.profile_mode, probing_mode=args.probing_mode, max_probes=args.max_probes)
             repaired_sql = chain_result.get("final_repaired_sql")
-            repair_result = (
-                SemanticRepairResult(
-                    status="success",
-                    repaired_sql=str(repaired_sql),
-                    edit_summary=f"{args.semantic_repair_framework} semantic repair chain final SQL.",
-                    confidence=None,
-                    raw_output=None,
-                    error=None,
-                )
-                if repaired_sql
-                else None
-            )
+            repair_result = SemanticRepairResult(status="success", repaired_sql=str(repaired_sql), edit_summary=f"{args.semantic_repair_framework} semantic repair chain final SQL.", confidence=None, raw_output=None, error=None) if repaired_sql else None
             output_row = build_attempt_output_row(
-                source_row=row,
-                repair_request=None,
-                repair_result=repair_result,
+                source_row=row, repair_request=None, repair_result=repair_result,
                 intent_representation_used=intent_representation if isinstance(intent_representation, dict) else None,
-                repair_mode=args.semantic_repair_framework,
-                status="success",
-                skip_reason=None,
-                repair_model=args.repair_model_name,
-                intent_mode=args.intent_mode,
-                repair_context_hash=repair_context_hash,
+                repair_mode=args.semantic_repair_framework, status="success", skip_reason=None,
+                repair_model=args.repair_model_name, intent_mode=args.intent_mode, repair_context_hash=repair_context_hash,
             )
+        else:
+            if repair_mode == "semantic":
+                repair_request = build_semantic_repair_request(row=row, schema_text=schema_text)
+                repair_result = repair_semantic_sql(repair_request, repair_generate_fn)
+            elif repair_mode == "non_executable":
+                repair_request = build_non_executable_repair_request(row=row, schema_text=schema_text, intent_representation=intent_representation if isinstance(intent_representation, dict) else None)
+                repair_result = repair_non_executable_sql(repair_request, repair_generate_fn)
+            output_row = build_attempt_output_row(
+                source_row=row, repair_request=repair_request, repair_result=repair_result,
+                intent_representation_used=intent_representation if isinstance(intent_representation, dict) else None,
+                repair_mode=repair_mode, status="success", skip_reason=None,
+                repair_model=args.repair_model_name, intent_mode=args.intent_mode, repair_context_hash=repair_context_hash,
+            )
+
+        if chain_result is not None:
             output_row.update(chain_result)
             output_row["semantic_repair_framework"] = args.semantic_repair_framework
             output_row["verifier_model"] = args.verifier_model_name
@@ -463,45 +379,85 @@ def main() -> None:
             output_row["profile_mode"] = args.profile_mode
             output_row["probing_mode"] = args.probing_mode
             output_row["max_probes"] = args.max_probes
-            append_jsonl(args.output_path, output_row)
+        output_row["input_index"] = input_index
+        return output_row
 
-            if repaired_sql:
-                counts["generated"] += 1
+    pending_indexed = list(enumerate(pending_rows))
+    counts = {"attempted": 0, "skipped": 0, "generated": 0, "group_b_attempted": 0, "group_c_attempted": 0}
 
-            continue
-
-        if repair_mode == "semantic":
-            repair_request = build_semantic_repair_request(
-                row=row,
-                schema_text=schema_text,
-            )
-            repair_result = repair_semantic_sql(repair_request, repair_generate_fn)
-        elif repair_mode == "non_executable":
-            repair_request = build_non_executable_repair_request(
-                row=row,
-                schema_text=schema_text,
-                intent_representation=intent_representation if isinstance(intent_representation, dict) else None,
-            )
-            repair_result = repair_non_executable_sql(repair_request, repair_generate_fn)
-        else:
-            repair_result = None
-
-        if repair_result is not None and repair_result.status == "success":
+    def commit_row(output_row: dict[str, Any]) -> None:
+        append_jsonl(args.output_path, output_row)
+        if output_row.get("status") == "skipped":
+            counts["skipped"] += 1
+            return
+        counts["attempted"] += 1
+        if output_row.get("evaluation_group") == "B_wrong_executable":
+            counts["group_b_attempted"] += 1
+        elif output_row.get("evaluation_group") == "C_non_executable":
+            counts["group_c_attempted"] += 1
+        if output_row.get("repaired_sql"):
             counts["generated"] += 1
 
-        output_row = build_attempt_output_row(
-            source_row=row,
-            repair_request=repair_request,
-            repair_result=repair_result,
-            intent_representation_used=intent_representation if isinstance(intent_representation, dict) else None,
-            repair_mode=repair_mode,
-            status="success",
-            skip_reason=None,
-            repair_model=args.repair_model_name,
-            intent_mode=args.intent_mode,
-            repair_context_hash=repair_context_hash,
-        )
-        append_jsonl(args.output_path, output_row)
+    def run_pending_rows() -> None:
+        if args.workers == 1:
+            for input_index, row in tqdm(pending_indexed):
+                commit_row(process_row(input_index, row))
+            return
+        iterator = iter(pending_indexed)
+        futures = {}
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            def submit_next() -> bool:
+                try:
+                    input_index, row = next(iterator)
+                except StopIteration:
+                    return False
+                futures[executor.submit(process_row, input_index, row)] = None
+                return True
+            for _ in range(args.workers):
+                if not submit_next():
+                    break
+            progress = tqdm(total=len(pending_indexed))
+            try:
+                while futures:
+                    completed, _ = wait(futures, return_when=FIRST_COMPLETED)
+                    for future in completed:
+                        futures.pop(future)
+                        commit_row(future.result())
+                        progress.update(1)
+                        submit_next()
+            except KeyboardInterrupt:
+                print("Interrupt received; draining in-flight rows before exit.")
+                for future in futures:
+                    future.cancel()
+                for future in list(futures):
+                    if not future.cancelled():
+                        commit_row(future.result())
+                        progress.update(1)
+                raise
+            finally:
+                progress.close()
+
+    with exclusive_jsonl_run((args.output_path,)):
+        recover_incomplete_jsonl_tail(args.output_path)
+        completed_keys = load_completed_keys(args.output_path)
+        pending_indexed = [
+            (input_index, row)
+            for input_index, row in pending_indexed
+            if args.overwrite
+            or get_repair_run_key(
+                row=row,
+                repair_mode=(
+                    args.semantic_repair_framework
+                    if args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS
+                    and classify_candidate_row(row)[1] == "semantic"
+                    else classify_candidate_row(row)[1] or "unknown"
+                ),
+                repair_model=args.repair_model_name,
+                intent_mode=args.intent_mode,
+                repair_context_hash=repair_context_hash,
+            ) not in completed_keys
+        ]
+        run_pending_rows()
 
     print(f"Saved repair outputs to: {args.output_path}")
     print(
