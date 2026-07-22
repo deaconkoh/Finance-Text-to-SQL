@@ -13,7 +13,9 @@ if [[ "${INSTALL_DEPS:-0}" == "1" ]]; then
 fi
 
 : "${RUN_ID:?Set RUN_ID to the labeled evaluation run used for the repair ablation.}"
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
+# DGX publication training uses the four compute A100s; GPU 3 is reserved for display.
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,4}"
+export TRAIN_NUM_PROCESSES="${TRAIN_NUM_PROCESSES:-4}"
 export SFT_PER_DEVICE_BATCH_SIZE="${SFT_PER_DEVICE_BATCH_SIZE:-4}"
 export SFT_GRADIENT_ACCUMULATION_STEPS="${SFT_GRADIENT_ACCUMULATION_STEPS:-1}"
 export RL_BATCH_SIZE="${RL_BATCH_SIZE:-8}"
@@ -34,10 +36,27 @@ if ! command -v tee >/dev/null 2>&1; then
   echo "tee is required for stage logs." >&2
   exit 1
 fi
-if ! command -v nvidia-smi >/dev/null 2>&1 || [[ "$(nvidia-smi -L | wc -l | tr -d ' ')" -lt 2 ]]; then
-  echo "This runner requires two visible NVIDIA GPUs." >&2
+if ! command -v nvidia-smi >/dev/null 2>&1; then
+  echo "nvidia-smi is required for GPU preflight checks." >&2
   exit 1
 fi
+
+IFS=',' read -r -a SELECTED_GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+if [[ "${#SELECTED_GPU_IDS[@]}" -ne "$TRAIN_NUM_PROCESSES" ]]; then
+  echo "CUDA_VISIBLE_DEVICES must contain exactly TRAIN_NUM_PROCESSES GPU IDs." >&2
+  exit 1
+fi
+for gpu_id in "${SELECTED_GPU_IDS[@]}"; do
+  if ! [[ "$gpu_id" =~ ^[0-9]+$ ]] || ! nvidia-smi -i "$gpu_id" -L >/dev/null 2>&1; then
+    echo "Selected GPU '$gpu_id' is not available to nvidia-smi." >&2
+    exit 1
+  fi
+done
+if (( RL_BATCH_SIZE % TRAIN_NUM_PROCESSES != 0 )); then
+  echo "RL_BATCH_SIZE must be divisible by TRAIN_NUM_PROCESSES for distributed PPO." >&2
+  exit 1
+fi
+export SFT_EFFECTIVE_GLOBAL_BATCH_SIZE=$((SFT_PER_DEVICE_BATCH_SIZE * SFT_GRADIENT_ACCUMULATION_STEPS * TRAIN_NUM_PROCESSES))
 
 # 2. Set paths
 echo "Setting paths..."
@@ -53,6 +72,56 @@ mkdir -p "$TRAIN_DIR" "$REPAIR_ABLATION_DIR"
 
 PIPELINE_LOG="${REPAIR_ABLATION_DIR}/run.log"
 exec > >(tee -a "$PIPELINE_LOG") 2>&1
+
+write_training_manifest() {
+  python - "$REPAIR_ABLATION_DIR/training_manifest.json" <<'PY'
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+gpu_query = subprocess.run(
+    [
+        "nvidia-smi",
+        "--query-gpu=index,name,memory.total,driver_version",
+        "--format=csv,noheader",
+    ],
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.splitlines()
+
+manifest = {
+    "created_at_utc": datetime.now(timezone.utc).isoformat(),
+    "run_id": os.environ["RUN_ID"],
+    "cuda_visible_devices": os.environ["CUDA_VISIBLE_DEVICES"],
+    "train_num_processes": int(os.environ["TRAIN_NUM_PROCESSES"]),
+    "selected_gpu_ids": os.environ["CUDA_VISIBLE_DEVICES"].split(","),
+    "detected_gpus": gpu_query,
+    "sft": {
+        "per_device_batch_size": int(os.environ["SFT_PER_DEVICE_BATCH_SIZE"]),
+        "gradient_accumulation_steps": int(os.environ["SFT_GRADIENT_ACCUMULATION_STEPS"]),
+        "effective_global_batch_size": int(os.environ["SFT_EFFECTIVE_GLOBAL_BATCH_SIZE"]),
+        "seed": int(os.environ["TRAIN_SEED"]),
+    },
+    "rl": {
+        "learning_rate": 1.0e-6,
+        "batch_size": int(os.environ["RL_BATCH_SIZE"]),
+        "mini_batch_size": int(os.environ["RL_MINI_BATCH_SIZE"]),
+        "ppo_epochs": 1,
+        "seed": int(os.environ["TRAIN_SEED"]),
+    },
+}
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump(manifest, handle, ensure_ascii=True, indent=2)
+    handle.write("\n")
+PY
+}
+
+write_training_manifest
+echo "Training GPUs: $CUDA_VISIBLE_DEVICES ($TRAIN_NUM_PROCESSES processes)"
+echo "SFT effective global batch size: $SFT_EFFECTIVE_GLOBAL_BATCH_SIZE"
 
 run_stage_logged() {
   local log_path="$1"
@@ -117,10 +186,10 @@ python scripts/dev/build_repair_learning_data.py \
   --schema-text-path data/booksql/schema.txt \
   --split train
 
-# 7. Train SFT Llama-3.1-8B repairer across both GPUs
+# 7. Train SFT Llama-3.1-8B repairer across all selected A100 GPUs
 echo "Training SFT repairer..."
 run_stage_logged "$REPAIR_ABLATION_DIR/sft_training.log" \
-  accelerate launch --multi_gpu --num_processes 2 --mixed_precision bf16 scripts/dev/train_sft_repairer.py \
+  accelerate launch --multi_gpu --num_processes "$TRAIN_NUM_PROCESSES" --mixed_precision bf16 scripts/dev/train_sft_repairer.py \
   --train-jsonl "$REPAIR_ABLATION_DIR/sft_train_examples.jsonl" \
   --output-dir "$REPAIR_ABLATION_DIR/checkpoints/sft_llama31_8b" \
   --base-model meta-llama/Meta-Llama-3.1-8B-Instruct \
@@ -130,10 +199,10 @@ run_stage_logged "$REPAIR_ABLATION_DIR/sft_training.log" \
   --dataloader-num-workers "$DATALOADER_NUM_WORKERS" \
   --seed "$TRAIN_SEED"
 
-# 8. Train RL repairer from SFT across both GPUs
+# 8. Train RL repairer from SFT across all selected A100 GPUs
 echo "Training RL repairer..."
 run_stage_logged "$REPAIR_ABLATION_DIR/rl_training.log" \
-  accelerate launch --multi_gpu --num_processes 2 --mixed_precision bf16 scripts/dev/train_rl_repairer.py \
+  accelerate launch --multi_gpu --num_processes "$TRAIN_NUM_PROCESSES" --mixed_precision bf16 scripts/dev/train_rl_repairer.py \
   --train-jsonl "$REPAIR_ABLATION_DIR/sft_train_examples.jsonl" \
   --sft-adapter-path "$REPAIR_ABLATION_DIR/checkpoints/sft_llama31_8b" \
   --output-dir "$REPAIR_ABLATION_DIR/checkpoints/rl_llama31_8b" \
