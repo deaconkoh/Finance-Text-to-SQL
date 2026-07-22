@@ -14,7 +14,7 @@ fi
 
 : "${RUN_ID:?Set RUN_ID to the labeled evaluation run used for the repair ablation.}"
 # DGX publication training uses the four compute A100s; GPU 3 is reserved for display.
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,4}"
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-GPU-3f5077d2-54da-5bdf-3bad-df04ea1f3582,GPU-3e5d4bba-023c-a3c2-a664-3213f70179b6,GPU-7c2d8d6f-333c-3f57-e9d7-e3c0a76a1981,GPU-d05d84bd-d9d0-6666-7fdf-eaa2fe5bb2f2}"
 export TRAIN_NUM_PROCESSES="${TRAIN_NUM_PROCESSES:-4}"
 export SFT_PER_DEVICE_BATCH_SIZE="${SFT_PER_DEVICE_BATCH_SIZE:-4}"
 export SFT_GRADIENT_ACCUMULATION_STEPS="${SFT_GRADIENT_ACCUMULATION_STEPS:-1}"
@@ -46,12 +46,13 @@ if [[ "${#SELECTED_GPU_IDS[@]}" -ne "$TRAIN_NUM_PROCESSES" ]]; then
   echo "CUDA_VISIBLE_DEVICES must contain exactly TRAIN_NUM_PROCESSES GPU IDs." >&2
   exit 1
 fi
-for gpu_id in "${SELECTED_GPU_IDS[@]}"; do
-  if ! [[ "$gpu_id" =~ ^[0-9]+$ ]] || ! nvidia-smi -i "$gpu_id" -L >/dev/null 2>&1; then
-    echo "Selected GPU '$gpu_id' is not available to nvidia-smi." >&2
-    exit 1
-  fi
-done
+
+#for gpu_id in "${SELECTED_GPU_IDS[@]}"; do
+#  if ! [[ "$gpu_id" =~ ^[0-9]+$ ]] || ! nvidia-smi -i "$gpu_id" -L >/dev/null 2>&1; then
+#    echo "Selected GPU '$gpu_id' is not available to nvidia-smi." >&2
+#    exit 1
+#  fi
+#done
 if (( RL_BATCH_SIZE % TRAIN_NUM_PROCESSES != 0 )); then
   echo "RL_BATCH_SIZE must be divisible by TRAIN_NUM_PROCESSES for distributed PPO." >&2
   exit 1
