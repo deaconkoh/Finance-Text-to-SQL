@@ -97,9 +97,8 @@ import hashlib
 import json
 import random
 import sys
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from tqdm import tqdm
 
@@ -124,11 +123,6 @@ try:
         verify_decompiled_sql,
     )
     from src.utils.inference_utils import build_verifier_generate_fn
-    from src.utils.resumable_jsonl import (
-        append_jsonl_durable,
-        exclusive_jsonl_run,
-        recover_incomplete_jsonl_tail,
-    )
 
 except ModuleNotFoundError:
     from finverisql.intent_decomposer import IntentDecomposer
@@ -142,11 +136,6 @@ except ModuleNotFoundError:
         verify_decompiled_sql,
     )
     from utils.inference_utils import build_verifier_generate_fn
-    from utils.resumable_jsonl import (
-        append_jsonl_durable,
-        exclusive_jsonl_run,
-        recover_incomplete_jsonl_tail,
-    )
 
 
 DEFAULT_SCHEMA_PATH = "data/booksql/schema_annotations.json"
@@ -182,7 +171,12 @@ def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
 
 
 def append_jsonl(path: str | Path, row: dict[str, Any]) -> None:
-    append_jsonl_durable(path, row)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        f.flush()
 
 
 def to_jsonable(obj: Any) -> Any:
@@ -753,65 +747,15 @@ def append_routed_rows(
     return appended, skipped
 
 
-def run_bounded_rows(
-    pending_rows: list[tuple[int, dict[str, Any]]],
-    workers: int,
-    process_row: Callable[[int, dict[str, Any]], dict[str, Any]],
-    commit_row: Callable[[dict[str, Any]], None],
-) -> None:
-    """Process rows concurrently while the caller remains the only JSONL writer."""
-    if workers == 1:
-        for input_index, row in tqdm(pending_rows):
-            commit_row(process_row(input_index, row))
-        return
-
-    iterator = iter(pending_rows)
-    futures = {}
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        def submit_next() -> bool:
-            try:
-                input_index, row = next(iterator)
-            except StopIteration:
-                return False
-            futures[executor.submit(process_row, input_index, row)] = (input_index, row)
-            return True
-
-        for _ in range(workers):
-            if not submit_next():
-                break
-
-        progress = tqdm(total=len(pending_rows))
-        try:
-            while futures:
-                completed, _ = wait(futures, return_when=FIRST_COMPLETED)
-                for future in completed:
-                    futures.pop(future)
-                    commit_row(future.result())
-                    progress.update(1)
-                    submit_next()
-        except KeyboardInterrupt:
-            print("Interrupt received; draining in-flight rows before exit.")
-            for future in futures:
-                future.cancel()
-            for future in list(futures):
-                if future.cancelled():
-                    continue
-                commit_row(future.result())
-                progress.update(1)
-            raise
-        finally:
-            progress.close()
-
-
 def run_execution_error_rows(
     rows: list[dict[str, Any]],
     output_path: Path,
     args: argparse.Namespace,
 ) -> int:
     completed_keys = load_completed_keys(output_path)
-    pending_rows: list[tuple[int, dict[str, Any]]] = []
+    pending_rows: list[dict[str, Any]] = []
 
-    for input_index, row in enumerate(rows):
+    for row in rows:
         run_key = get_run_key(
             row=row,
             verifier_model=args.model_name,
@@ -826,7 +770,7 @@ def run_execution_error_rows(
         if not args.overwrite and run_key in completed_keys:
             continue
 
-        pending_rows.append((input_index, row))
+        pending_rows.append(row)
 
     print(f"Rows selected for Group C execution-error verification: {len(rows)}")
     print(f"Already completed in verification output: {len(rows) - len(pending_rows)}")
@@ -857,7 +801,7 @@ def run_execution_error_rows(
             schema_store=schema_store,
         )
 
-    for input_index, row in tqdm(pending_rows):
+    for row in tqdm(pending_rows):
         try:
             question = get_question(row, args.question_key)
             generated_sql = get_generated_sql(row, args.sql_key)
@@ -929,7 +873,6 @@ def run_execution_error_rows(
                 "pipeline_route": "non_executable_verification",
             }
 
-        output_row["input_index"] = input_index
         append_jsonl(output_path, output_row)
         completed_keys.add(
             get_run_key(
@@ -955,9 +898,9 @@ def run_verification_rows(
 ) -> int:
     completed_keys = load_completed_keys(output_path)
 
-    pending_rows: list[tuple[int, dict[str, Any]]] = []
+    pending_rows: list[dict[str, Any]] = []
 
-    for input_index, row in enumerate(rows):
+    for row in rows:
         run_key = get_run_key(
             row=row,
             verifier_model=args.model_name,
@@ -972,7 +915,7 @@ def run_verification_rows(
         if not args.overwrite and run_key in completed_keys:
             continue
 
-        pending_rows.append((input_index, row))
+        pending_rows.append(row)
 
     print(f"Rows selected for verification: {len(rows)}")
     print(f"Already completed in verification output: {len(rows) - len(pending_rows)}")
@@ -983,7 +926,6 @@ def run_verification_rows(
     print(f"Profile mode: {args.profile_mode}")
     print(f"Probing mode: {args.probing_mode}")
     print(f"Max probes: {args.max_probes}")
-    print(f"Concurrent workers: {args.workers}")
     print(f"Intent cache: {args.intent_cache_path or 'disabled'}")
     print(f"Sample seed: {args.sample_seed if args.sample_seed is not None else 'disabled'}")
 
@@ -1011,7 +953,13 @@ def run_verification_rows(
             schema_store=schema_store,
         )
 
-    def process_row(input_index: int, row: dict[str, Any]) -> dict[str, Any]:
+    for row in tqdm(pending_rows):
+        question_id = str(
+            row.get("question_id")
+            or row.get("id")
+            or row.get(args.question_key)
+        )
+
         try:
             question = get_question(row, args.question_key)
             generated_sql = get_generated_sql(row, args.sql_key)
@@ -1092,14 +1040,11 @@ def run_verification_rows(
                 "error": str(exc),
             }
 
-        output_row["input_index"] = input_index
-        return output_row
-
-    def commit_row(output_row: dict[str, Any]) -> None:
         append_jsonl(output_path, output_row)
+
         completed_keys.add(
             get_run_key(
-                row=output_row,
+                row=row,
                 verifier_model=args.model_name,
                 question_key=args.question_key,
                 sql_key=args.sql_key,
@@ -1109,13 +1054,6 @@ def run_verification_rows(
                 max_probes=args.max_probes,
             )
         )
-
-    run_bounded_rows(
-        pending_rows=pending_rows,
-        workers=args.workers,
-        process_row=process_row,
-        commit_row=commit_row,
-    )
 
     print(f"Saved verification outputs to: {output_path}")
     return len(pending_rows)
@@ -1197,39 +1135,35 @@ def run_verification(args: argparse.Namespace) -> None:
             f"{sorted({get_evaluation_group(row) for row in unknown_rows})}"
         )
 
-    with exclusive_jsonl_run((output_path, repair_output_path, skipped_output_path)):
-        for artifact_path in (output_path, repair_output_path, skipped_output_path):
-            recover_incomplete_jsonl_tail(artifact_path)
+    verified_count = run_verification_rows(
+        rows=verify_rows,
+        output_path=output_path,
+        args=args,
+    )
+    group_c_verified_count = run_execution_error_rows(
+        rows=repair_rows,
+        output_path=output_path,
+        args=args,
+    )
 
-        verified_count = run_verification_rows(
-            rows=verify_rows,
-            output_path=output_path,
-            args=args,
-        )
-        group_c_verified_count = run_execution_error_rows(
-            rows=repair_rows,
-            output_path=output_path,
-            args=args,
-        )
-
-        repair_appended, repair_skipped = append_routed_rows(
-            rows=repair_rows,
-            output_path=repair_output_path,
-            question_key=args.question_key,
-            sql_key=args.sql_key,
-            route_target="repair_queue",
-            route_reason="evaluation_group=C_non_executable routes directly to repair.",
-            overwrite=args.overwrite,
-        )
-        skipped_appended, skipped_skipped = append_routed_rows(
-            rows=excluded_rows,
-            output_path=skipped_output_path,
-            question_key=args.question_key,
-            sql_key=args.sql_key,
-            route_target="excluded",
-            route_reason="evaluation_group=D_ambiguous is excluded from the pipeline.",
-            overwrite=args.overwrite,
-        )
+    repair_appended, repair_skipped = append_routed_rows(
+        rows=repair_rows,
+        output_path=repair_output_path,
+        question_key=args.question_key,
+        sql_key=args.sql_key,
+        route_target="repair_queue",
+        route_reason="evaluation_group=C_non_executable routes directly to repair.",
+        overwrite=args.overwrite,
+    )
+    skipped_appended, skipped_skipped = append_routed_rows(
+        rows=excluded_rows,
+        output_path=skipped_output_path,
+        question_key=args.question_key,
+        sql_key=args.sql_key,
+        route_target="excluded",
+        route_reason="evaluation_group=D_ambiguous is excluded from the pipeline.",
+        overwrite=args.overwrite,
+    )
 
     if repair_rows:
         print(
@@ -1375,15 +1309,6 @@ def parse_args() -> argparse.Namespace:
         help="Ollama request timeout in seconds. Ignored for MLX-VLM backends.",
     )
     parser.add_argument(
-        "--workers",
-        type=int,
-        default=1,
-        help=(
-            "Concurrent row workers. Values above one require the Ollama backend; "
-            "completed rows are committed durably in completion order."
-        ),
-    )
-    parser.add_argument(
         "--evaluation-group",
         default=None,
         help=(
@@ -1459,10 +1384,6 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    if args.workers < 1:
-        raise ValueError("--workers must be at least 1.")
-    if args.workers > 1 and args.backend != "ollama":
-        raise ValueError("--workers > 1 is supported only with --backend ollama.")
     run_verification(args)
 
 

@@ -9,8 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from src.utils.resumable_jsonl import append_jsonl_durable
-
 from sqlglot import exp, parse_one
 
 from src.finverisql.compact_semantic_profile import build_verifier_payload
@@ -195,7 +193,12 @@ def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
 
 
 def append_jsonl(path: str | Path, row: dict[str, Any]) -> None:
-    append_jsonl_durable(path, row)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+        handle.flush()
 
 
 def stable_sql_hash(sql: Any) -> str:
@@ -1729,15 +1732,11 @@ def load_completed_keys(output_path: str | Path) -> set[tuple[str, str, str, str
             except Exception:
                 continue
 
-            repair_mode = row.get("repair_mode")
-            if row.get("status") == "skipped" and not repair_mode:
-                repair_mode = "skipped"
-
             completed.add(
                 (
                     str(row.get("question_id") or row.get("id") or ""),
                     str(row.get("original_generated_sql_hash") or ""),
-                    str(repair_mode or ""),
+                    str(row.get("repair_mode") or ""),
                     str(row.get("repair_model") or ""),
                     str(row.get("intent_mode") or ""),
                     str(row.get("repair_context_hash") or ""),

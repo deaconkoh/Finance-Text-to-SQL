@@ -35,8 +35,6 @@ REFINE_NUM_PREDICT="${REFINE_NUM_PREDICT:-768}"
 MAX_PROBES="${MAX_PROBES:-7}"
 WORKERS="4"
 GENERIC_REFINE_WORKERS="${GENERIC_REFINE_WORKERS:-2}"
-FINVERISQL_VERIFY_WORKERS="${FINVERISQL_VERIFY_WORKERS:-1}"
-FINVERISQL_REPAIR_WORKERS="${FINVERISQL_REPAIR_WORKERS:-1}"
 RUN_REPAIR_STRATEGY_ABLATION="${RUN_REPAIR_STRATEGY_ABLATION:-1}"
 FORCE_BASELINE_EVALUATION="${FORCE_BASELINE_EVALUATION:-0}"
 FORCE_REFINEMENT_EVALUATION="${FORCE_REFINEMENT_EVALUATION:-0}"
@@ -100,8 +98,7 @@ run_official_test() {
     --schema-path "$SCHEMA_JSON" --profile-mode compact --intent-mode nl_only \
     --probing-mode probe --max-probes "$MAX_PROBES" --backend ollama --model-name "$POSTGEN_MODEL" \
     --temperature "$TEMPERATURE" --num-predict "$VERIFY_NUM_PREDICT" --timeout "$TIMEOUT" \
-    --intent-cache-path "$intent_jsonl" --require-intent-cache \
-    --workers "$FINVERISQL_VERIFY_WORKERS"
+    --intent-cache-path "$intent_jsonl" --require-intent-cache
   run_cmd python3 scripts/run_finverisql_repair.py \
     --input-path "$verify_jsonl" --output-path "$repair_jsonl" --schema-path "$SCHEMA_JSON" \
     --semantic-repair-framework specialized_chain --intent-mode nl_only \
@@ -109,8 +106,7 @@ run_official_test() {
     --repair-backend ollama --repair-model-name "$POSTGEN_MODEL" \
     --verifier-backend ollama --verifier-model-name "$POSTGEN_MODEL" \
     --profile-mode compact --probing-mode probe --max-probes "$MAX_PROBES" \
-    --temperature "$TEMPERATURE" --num-predict "$REPAIR_NUM_PREDICT" --timeout "$TIMEOUT" \
-    --workers "$FINVERISQL_REPAIR_WORKERS"
+    --temperature "$TEMPERATURE" --num-predict "$REPAIR_NUM_PREDICT" --timeout "$TIMEOUT"
   run_cmd python3 scripts/export_official_test_submission.py \
     --input-jsonl "$repair_jsonl" --submission-csv "$test_dir/submission.csv" \
     --predictions-jsonl "$test_dir/final_predictions.jsonl" \
@@ -536,7 +532,6 @@ run_finverisql_variant() {
     --temperature "$TEMPERATURE" \
     --num-predict "$VERIFY_NUM_PREDICT" \
     --timeout "$TIMEOUT" \
-    --workers "$FINVERISQL_VERIFY_WORKERS" \
     "${intent_cache_args[@]}"
 
   run_cmd python3 -m src.eval.evaluate_verifier_diagnostics \
@@ -559,8 +554,7 @@ run_finverisql_variant() {
     --max-probes "$MAX_PROBES" \
     --temperature "$TEMPERATURE" \
     --num-predict "$REPAIR_NUM_PREDICT" \
-    --timeout "$TIMEOUT" \
-    --workers "$FINVERISQL_REPAIR_WORKERS"
+    --timeout "$TIMEOUT"
 
   run_cached_final_evaluation \
     "$LOG_PATH" "$repair_jsonl" "$final_eval_jsonl" "$final_metrics_json" \
