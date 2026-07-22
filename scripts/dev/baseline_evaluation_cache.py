@@ -33,6 +33,24 @@ def read_jsonl_ids(path: Path) -> list[str]:
     return ids
 
 
+def read_jsonl_rows(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with path.open(encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if not isinstance(row, dict):
+                raise ValueError(f"{path}:{line_number} is not a JSON object")
+            rows.append(row)
+    return rows
+
+
+def sql_signature(row: dict[str, Any]) -> str:
+    text = str(row.get("generated_sql") or row.get("pred_sql") or "")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", choices=["evaluation", "asa"], required=True)
@@ -113,15 +131,30 @@ def validate_outputs(args: argparse.Namespace, data: dict[str, Any]) -> None:
         raise ValueError("Missing cached outputs: " + ", ".join(missing))
 
     if args.stage == "evaluation":
-        output_ids = read_jsonl_ids(Path(args.output_jsonl))
+        input_rows = read_jsonl_rows(Path(args.input_jsonl))
+        output_rows = read_jsonl_rows(Path(args.output_jsonl))
+        output_ids = [str(row.get("question_id") or "") for row in output_rows]
         if output_ids != data["input"]["question_ids"]:
             raise ValueError("Cached output question IDs do not match the input JSONL")
+
+        if args.evaluation_kind == "baseline":
+            input_sql_signatures = [sql_signature(row) for row in input_rows]
+            output_sql_signatures = [sql_signature(row) for row in output_rows]
+            if output_sql_signatures != input_sql_signatures:
+                raise ValueError(
+                    "Cached baseline evaluation SQL does not match the input JSONL"
+                )
 
         if args.metrics_json:
             metrics = json.loads(Path(args.metrics_json).read_text(encoding="utf-8"))
             total = metrics.get("total_examples") if isinstance(metrics, dict) else None
             if total != len(output_ids):
                 raise ValueError("Cached metrics total_examples does not match output rows")
+
+    if args.stage == "asa" and args.row_output_jsonl:
+        row_ids = read_jsonl_ids(Path(args.row_output_jsonl))
+        if row_ids != data["input"]["question_ids"]:
+            raise ValueError("Cached ASA row output question IDs do not match the input JSONL")
 
 
 def main() -> None:
@@ -141,6 +174,10 @@ def main() -> None:
             print(f"cache-miss: invalid manifest: {exc}")
             raise SystemExit(1) from exc
         if existing != data:
+            if args.evaluation_kind == "baseline":
+                manifest_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+                print("cache-adopted: refreshed stale manifest")
+                return
             print("cache-miss: input, configuration, or output contract changed")
             raise SystemExit(1)
         print(f"cache-hit: {args.stage}")

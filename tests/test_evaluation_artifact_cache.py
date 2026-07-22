@@ -74,6 +74,81 @@ def test_final_evaluation_cache_misses_when_refinement_output_changes(tmp_path: 
     assert "configuration" in rerun.stdout
 
 
+def test_baseline_evaluation_cache_refreshes_stale_manifest_for_valid_artifacts(tmp_path: Path) -> None:
+    input_jsonl = tmp_path / "baseline.jsonl"
+    output_jsonl = tmp_path / "baseline_evaluated.jsonl"
+    metrics_json = tmp_path / "metrics.json"
+    db_path = tmp_path / "booksql.sqlite"
+    schema_path = tmp_path / "schema.json"
+    manifest = tmp_path / "evaluation_manifest.json"
+
+    rows = [
+        {"question_id": "q1", "generated_sql": "SELECT 1;"},
+        {"question_id": "q2", "generated_sql": "SELECT 2;"},
+    ]
+    write_jsonl(input_jsonl, rows)
+    write_jsonl(output_jsonl, rows)
+    metrics_json.write_text('{"total_examples": 2}\n', encoding="utf-8")
+    db_path.write_bytes(b"database")
+    schema_path.write_text("{}\n", encoding="utf-8")
+    manifest.write_text('{"old": "shape"}\n', encoding="utf-8")
+
+    command = [
+        sys.executable,
+        str(CACHE_SCRIPT),
+        "--stage", "evaluation",
+        "--evaluation-kind", "baseline",
+        "--input-jsonl", str(input_jsonl),
+        "--db-path", str(db_path),
+        "--schema-path", str(schema_path),
+        "--manifest", str(manifest),
+        "--output-jsonl", str(output_jsonl),
+        "--metrics-json", str(metrics_json),
+    ]
+
+    first = subprocess.run(command, check=True, capture_output=True, text=True)
+    second = subprocess.run(command, check=True, capture_output=True, text=True)
+
+    assert "cache-adopted: refreshed stale manifest" in first.stdout
+    assert "cache-hit: evaluation" in second.stdout
+
+
+def test_baseline_evaluation_cache_misses_when_cached_sql_differs(tmp_path: Path) -> None:
+    input_jsonl = tmp_path / "baseline.jsonl"
+    output_jsonl = tmp_path / "baseline_evaluated.jsonl"
+    metrics_json = tmp_path / "metrics.json"
+    db_path = tmp_path / "booksql.sqlite"
+    schema_path = tmp_path / "schema.json"
+    manifest = tmp_path / "evaluation_manifest.json"
+
+    write_jsonl(input_jsonl, [{"question_id": "q1", "generated_sql": "SELECT 1;"}])
+    write_jsonl(output_jsonl, [{"question_id": "q1", "generated_sql": "SELECT 2;"}])
+    metrics_json.write_text('{"total_examples": 1}\n', encoding="utf-8")
+    db_path.write_bytes(b"database")
+    schema_path.write_text("{}\n", encoding="utf-8")
+    manifest.write_text('{"old": "shape"}\n', encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CACHE_SCRIPT),
+            "--stage", "evaluation",
+            "--evaluation-kind", "baseline",
+            "--input-jsonl", str(input_jsonl),
+            "--db-path", str(db_path),
+            "--schema-path", str(schema_path),
+            "--manifest", str(manifest),
+            "--output-jsonl", str(output_jsonl),
+            "--metrics-json", str(metrics_json),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "SQL does not match" in result.stdout
+
+
 def test_ablation_launcher_caches_generic_final_evaluations() -> None:
     launcher = (PROJECT_ROOT / "2_run_ablations.sh").read_text(encoding="utf-8")
 
