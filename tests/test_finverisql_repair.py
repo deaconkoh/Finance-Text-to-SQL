@@ -33,6 +33,8 @@ from src.finverisql.repair_runner import (
     build_semantic_repair_request,
     classify_candidate_row,
     detect_grouped_output_requirement,
+    get_repair_run_key,
+    load_completed_keys,
     route_mismatch_to_repair_mode,
     run_generic_semantic_repair_chain,
     run_non_executable_then_semantic_repair_chain,
@@ -79,6 +81,41 @@ def test_request_and_result_serialize_cleanly() -> None:
 
     json.dumps(request.to_dict())
     json.dumps(result.to_dict())
+
+
+def test_completed_repair_keys_normalize_legacy_skipped_rows(tmp_path: Path) -> None:
+    source_row = {
+        "question_id": "q-skipped",
+        "generated_sql": "SELECT 1;",
+    }
+    repair_context_hash = "ctx"
+    output_row = build_attempt_output_row(
+        source_row=source_row,
+        repair_request=None,
+        repair_result=None,
+        intent_representation_used=None,
+        repair_mode=None,
+        status="skipped",
+        skip_reason="verification_not_rejected",
+        repair_model="llama3.1:8b",
+        intent_mode="nl_only",
+        repair_context_hash=repair_context_hash,
+    )
+    assert output_row["repair_mode"] is None
+
+    output_path = tmp_path / "repairs.jsonl"
+    output_path.write_text(json.dumps(output_row) + "\n", encoding="utf-8")
+
+    completed = load_completed_keys(output_path)
+    expected_key = get_repair_run_key(
+        row=source_row,
+        repair_mode="unknown",
+        repair_model="llama3.1:8b",
+        intent_mode="nl_only",
+        repair_context_hash=repair_context_hash,
+    )
+
+    assert expected_key in completed
 
 
 def test_prompt_builder_uses_only_targeted_fields() -> None:

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 import json
 import sys
 from pathlib import Path
@@ -100,6 +101,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--temperature", type=float, default=0.0, help="Model temperature.")
     parser.add_argument("--num-predict", type=int, default=768, help="Maximum generation tokens.")
     parser.add_argument("--timeout", type=int, default=300, help="Ollama HTTP timeout in seconds.")
+    parser.add_argument("--workers", type=int, default=1, help="Number of concurrent repair rows. Values above 1 are supported only with Ollama backends.")
     parser.add_argument("--limit", type=int, default=None, help="Optional cap on processed input rows.")
     parser.add_argument("--overwrite", action="store_true", help="Disable resume skipping and append duplicate experiment rows.")
     return parser.parse_args()
@@ -180,6 +182,19 @@ def load_schema_text_for_repair(schema_path: str | None) -> str:
 
 def main() -> None:
     args = parse_args()
+    if args.workers <= 0:
+        raise ValueError("--workers must be >= 1.")
+    if args.workers > 1 and args.repair_backend != "ollama":
+        raise ValueError("--workers > 1 is supported only with --repair-backend ollama.")
+    if (
+        args.workers > 1
+        and args.semantic_repair_framework in CHAIN_REPAIR_FRAMEWORKS
+        and args.verifier_backend != "ollama"
+    ):
+        raise ValueError(
+            "--workers > 1 with chain repair is supported only with "
+            "--verifier-backend ollama."
+        )
 
     rows = read_jsonl(args.input_path)
     if args.limit is not None:
@@ -219,7 +234,7 @@ def main() -> None:
             repair_context_hash=repair_context_hash,
         )
 
-        if is_candidate and not args.overwrite and run_key in completed_keys:
+        if not args.overwrite and run_key in completed_keys:
             continue
 
         pending_rows.append(row)
@@ -227,6 +242,7 @@ def main() -> None:
     print(f"Input rows selected: {len(rows)}")
     print(f"Pending repair rows: {len(pending_rows)}")
     print(f"Repair model: {args.repair_model_name} ({args.repair_backend})")
+    print(f"Repair workers: {args.workers}")
     print(f"Semantic repair framework: {args.semantic_repair_framework}")
     print(f"Intent mode for missing intents: {args.intent_mode}")
 
@@ -273,11 +289,18 @@ def main() -> None:
         "group_c_attempted": 0,
     }
 
-    for row in tqdm(pending_rows):
+    def run_one(row: dict) -> tuple[dict, dict[str, int]]:
+        row_counts = {
+            "attempted": 0,
+            "skipped": 0,
+            "generated": 0,
+            "group_b_attempted": 0,
+            "group_c_attempted": 0,
+        }
         is_candidate, repair_mode, skip_reason = classify_candidate_row(row)
 
         if not is_candidate:
-            counts["skipped"] += 1
+            row_counts["skipped"] += 1
             output_row = build_attempt_output_row(
                 source_row=row,
                 repair_request=None,
@@ -290,14 +313,13 @@ def main() -> None:
                 intent_mode=args.intent_mode,
                 repair_context_hash=repair_context_hash,
             )
-            append_jsonl(args.output_path, output_row)
-            continue
+            return output_row, row_counts
 
-        counts["attempted"] += 1
+        row_counts["attempted"] += 1
         if row.get("evaluation_group") == "B_wrong_executable":
-            counts["group_b_attempted"] += 1
+            row_counts["group_b_attempted"] += 1
         elif row.get("evaluation_group") == "C_non_executable":
-            counts["group_c_attempted"] += 1
+            row_counts["group_c_attempted"] += 1
 
         intent_representation = (
             row.get("intent_representation")
@@ -379,12 +401,11 @@ def main() -> None:
             output_row["profile_mode"] = args.profile_mode
             output_row["probing_mode"] = args.probing_mode
             output_row["max_probes"] = args.max_probes
-            append_jsonl(args.output_path, output_row)
 
             if repaired_sql:
-                counts["generated"] += 1
+                row_counts["generated"] += 1
 
-            continue
+            return output_row, row_counts
 
         if repair_mode == "semantic" and args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS:
             if schema_store is None:
@@ -463,12 +484,11 @@ def main() -> None:
             output_row["profile_mode"] = args.profile_mode
             output_row["probing_mode"] = args.probing_mode
             output_row["max_probes"] = args.max_probes
-            append_jsonl(args.output_path, output_row)
 
             if repaired_sql:
-                counts["generated"] += 1
+                row_counts["generated"] += 1
 
-            continue
+            return output_row, row_counts
 
         if repair_mode == "semantic":
             repair_request = build_semantic_repair_request(
@@ -487,7 +507,7 @@ def main() -> None:
             repair_result = None
 
         if repair_result is not None and repair_result.status == "success":
-            counts["generated"] += 1
+            row_counts["generated"] += 1
 
         output_row = build_attempt_output_row(
             source_row=row,
@@ -501,7 +521,60 @@ def main() -> None:
             intent_mode=args.intent_mode,
             repair_context_hash=repair_context_hash,
         )
+        return output_row, row_counts
+
+    def mark_completed(row: dict) -> None:
+        _, repair_mode, _ = classify_candidate_row(row)
+        run_repair_mode = (
+            args.semantic_repair_framework
+            if args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS
+            and repair_mode == "semantic"
+            else repair_mode
+        )
+        completed_keys.add(
+            get_repair_run_key(
+                row=row,
+                repair_mode=run_repair_mode or "unknown",
+                repair_model=args.repair_model_name,
+                intent_mode=args.intent_mode,
+                repair_context_hash=repair_context_hash,
+            )
+        )
+
+    def record_result(row: dict, result: tuple[dict, dict[str, int]]) -> None:
+        output_row, row_counts = result
         append_jsonl(args.output_path, output_row)
+        mark_completed(row)
+        for key, value in row_counts.items():
+            counts[key] += value
+
+    if args.workers == 1:
+        for row in tqdm(pending_rows):
+            record_result(row, run_one(row))
+    else:
+        row_iter = iter(pending_rows)
+        futures: dict[Future[tuple[dict, dict[str, int]]], dict] = {}
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            with tqdm(total=len(pending_rows)) as progress:
+                for _ in range(args.workers):
+                    try:
+                        row = next(row_iter)
+                    except StopIteration:
+                        break
+                    futures[executor.submit(run_one, row)] = row
+
+                while futures:
+                    done, _ = wait(futures, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        row = futures.pop(future)
+                        record_result(row, future.result())
+                        progress.update(1)
+
+                        try:
+                            next_row = next(row_iter)
+                        except StopIteration:
+                            continue
+                        futures[executor.submit(run_one, next_row)] = next_row
 
     print(f"Saved repair outputs to: {args.output_path}")
     print(

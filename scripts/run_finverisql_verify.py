@@ -93,6 +93,7 @@ Notes:
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 import hashlib
 import json
 import random
@@ -801,7 +802,7 @@ def run_execution_error_rows(
             schema_store=schema_store,
         )
 
-    for row in tqdm(pending_rows):
+    def run_one(row: dict[str, Any]) -> dict[str, Any]:
         try:
             question = get_question(row, args.question_key)
             generated_sql = get_generated_sql(row, args.sql_key)
@@ -873,7 +874,28 @@ def run_execution_error_rows(
                 "pipeline_route": "non_executable_verification",
             }
 
-        append_jsonl(output_path, output_row)
+        return output_row
+
+    append_worker_outputs(
+        pending_rows=pending_rows,
+        output_path=output_path,
+        args=args,
+        completed_keys=completed_keys,
+        worker_fn=run_one,
+    )
+
+    print(f"Saved Group C verification outputs to: {output_path}")
+    return len(pending_rows)
+
+
+def append_worker_outputs(
+    pending_rows: list[dict[str, Any]],
+    output_path: Path,
+    args: argparse.Namespace,
+    completed_keys: set[Any],
+    worker_fn: Any,
+) -> None:
+    def mark_completed(row: dict[str, Any]) -> None:
         completed_keys.add(
             get_run_key(
                 row=row,
@@ -887,8 +909,37 @@ def run_execution_error_rows(
             )
         )
 
-    print(f"Saved Group C verification outputs to: {output_path}")
-    return len(pending_rows)
+    if args.workers == 1:
+        for row in tqdm(pending_rows):
+            append_jsonl(output_path, worker_fn(row))
+            mark_completed(row)
+        return
+
+    row_iter = iter(pending_rows)
+    futures: dict[Future[dict[str, Any]], dict[str, Any]] = {}
+
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        with tqdm(total=len(pending_rows)) as progress:
+            for _ in range(args.workers):
+                try:
+                    row = next(row_iter)
+                except StopIteration:
+                    break
+                futures[executor.submit(worker_fn, row)] = row
+
+            while futures:
+                done, _ = wait(futures, return_when=FIRST_COMPLETED)
+                for future in done:
+                    row = futures.pop(future)
+                    append_jsonl(output_path, future.result())
+                    mark_completed(row)
+                    progress.update(1)
+
+                    try:
+                        next_row = next(row_iter)
+                    except StopIteration:
+                        continue
+                    futures[executor.submit(worker_fn, next_row)] = next_row
 
 
 def run_verification_rows(
@@ -922,6 +973,7 @@ def run_verification_rows(
     print(f"Pending verification rows: {len(pending_rows)}")
     print(f"Verifier backend: {args.backend}")
     print(f"Verifier model: {args.model_name}")
+    print(f"Verifier workers: {args.workers}")
     print(f"Intent mode: {args.intent_mode}")
     print(f"Profile mode: {args.profile_mode}")
     print(f"Probing mode: {args.probing_mode}")
@@ -953,7 +1005,7 @@ def run_verification_rows(
             schema_store=schema_store,
         )
 
-    for row in tqdm(pending_rows):
+    def run_one(row: dict[str, Any]) -> dict[str, Any]:
         question_id = str(
             row.get("question_id")
             or row.get("id")
@@ -1040,26 +1092,26 @@ def run_verification_rows(
                 "error": str(exc),
             }
 
-        append_jsonl(output_path, output_row)
+        return output_row
 
-        completed_keys.add(
-            get_run_key(
-                row=row,
-                verifier_model=args.model_name,
-                question_key=args.question_key,
-                sql_key=args.sql_key,
-                profile_mode=args.profile_mode,
-                probing_mode=args.probing_mode,
-                intent_mode=args.intent_mode,
-                max_probes=args.max_probes,
-            )
-        )
+    append_worker_outputs(
+        pending_rows=pending_rows,
+        output_path=output_path,
+        args=args,
+        completed_keys=completed_keys,
+        worker_fn=run_one,
+    )
 
     print(f"Saved verification outputs to: {output_path}")
     return len(pending_rows)
 
 
 def run_verification(args: argparse.Namespace) -> None:
+    if args.workers <= 0:
+        raise ValueError("--workers must be >= 1.")
+    if args.workers > 1 and args.backend != "ollama":
+        raise ValueError("--workers > 1 is supported only with --backend ollama.")
+
     input_path = Path(args.input_path)
     output_path = Path(args.output_path)
 
@@ -1307,6 +1359,15 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=300,
         help="Ollama request timeout in seconds. Ignored for MLX-VLM backends.",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help=(
+            "Number of concurrent verification rows. Values above 1 are supported "
+            "only with --backend ollama."
+        ),
     )
     parser.add_argument(
         "--evaluation-group",

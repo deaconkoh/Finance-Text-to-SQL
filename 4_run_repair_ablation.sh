@@ -25,6 +25,7 @@ export DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-4}"
 export REWARD_WORKERS="${REWARD_WORKERS:-4}"
 export ADAPTER_INFERENCE_BATCH_SIZE="${ADAPTER_INFERENCE_BATCH_SIZE:-4}"
 export OLLAMA_REPAIR_WORKERS="${OLLAMA_REPAIR_WORKERS:-4}"
+export FINVERISQL_VERIFY_WORKERS="${FINVERISQL_VERIFY_WORKERS:-1}"
 export TRAIN_SEED="${TRAIN_SEED:-42}"
 export RUN_TRAINING="${RUN_TRAINING:-1}"
 
@@ -113,6 +114,9 @@ manifest = {
         "ppo_epochs": 1,
         "seed": int(os.environ["TRAIN_SEED"]),
     },
+    "finverisql": {
+        "train_verify_workers": int(os.environ["FINVERISQL_VERIFY_WORKERS"]),
+    },
 }
 with open(sys.argv[1], "w", encoding="utf-8") as handle:
     json.dump(manifest, handle, ensure_ascii=True, indent=2)
@@ -123,6 +127,7 @@ PY
 write_training_manifest
 echo "Training GPUs: $CUDA_VISIBLE_DEVICES ($TRAIN_NUM_PROCESSES processes)"
 echo "SFT effective global batch size: $SFT_EFFECTIVE_GLOBAL_BATCH_SIZE"
+echo "FinVeriSQL train verifier workers: $FINVERISQL_VERIFY_WORKERS"
 
 run_stage_logged() {
   local log_path="$1"
@@ -176,7 +181,8 @@ python scripts/run_finverisql_verify.py \
   --model-name llama3.1:8b \
   --temperature 0 \
   --num-predict 1024 \
-  --timeout 300
+  --timeout 300 \
+  --workers "$FINVERISQL_VERIFY_WORKERS"
 
 # 6. Build SFT/RL repair-learning data
 echo "Building SFT/RL repair-learning data..."
