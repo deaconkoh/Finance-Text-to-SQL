@@ -217,3 +217,8 @@ Refine summary: attempted=0, changed=0, failed=0, skipped=0
 Generic refinement workers: 4
 Saved generic refinement outputs to: data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine.jsonl
 Refine summary: attempted=0, changed=0, failed=0, skipped=0
+
+[2026-07-24T03:51:02Z] python3 -m src.baseline.generic_refine.self_refine --input-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine.jsonl --schema-path data/booksql/schema.txt --model-name llama3.1:8b --backend ollama --temperature 0 --num-predict 768 --timeout 300 --workers 4
+Generic refinement workers: 4
+Saved generic refinement outputs to: data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine.jsonl
+Refine summary: attempted=0, changed=0, failed=0, skipped=0
