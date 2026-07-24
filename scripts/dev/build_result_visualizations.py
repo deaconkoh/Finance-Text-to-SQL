@@ -20,6 +20,7 @@ from scripts.build_publication_tables import (  # noqa: E402
     asa_set_metrics,
     ensure_common_movement_denominator,
     final_ex_accuracy,
+    main_manifest_from_run_root,
     read_json,
     repair_rates,
 )
@@ -84,6 +85,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Directory for SVG figures. Defaults to $RUN_ROOT/publication_figures.",
     )
+    parser.add_argument(
+        "--main-only",
+        action="store_true",
+        help="Generate main-comparison figures only; skip the repair-strategy figure.",
+    )
     parser.add_argument("--width", type=int, default=1200, help="SVG width in pixels.")
     return parser.parse_args()
 
@@ -142,8 +148,11 @@ def write_svg(path: Path, lines: list[str]) -> None:
 
 def read_main_rows(run_root: Path) -> list[dict[str, Any]]:
     manifest_path = run_root / "debug" / "run_manifest.json"
-    ensure_file(manifest_path, "2_run_ablations.sh run manifest")
-    manifest = read_json(manifest_path)
+    manifest = (
+        read_json(manifest_path)
+        if manifest_path.is_file()
+        else main_manifest_from_run_root(run_root)
+    )
 
     systems = manifest.get("main_systems")
     if not isinstance(systems, list):
@@ -501,13 +510,13 @@ def render_pareto_chart(rows: list[dict[str, Any]], output_path: Path, width: in
 def write_visualization_data(
     output_path: Path,
     run_root: Path,
-    repair_ablation_dir: Path,
+    repair_ablation_dir: Path | None,
     main_rows: list[dict[str, Any]],
     strategy_rows: list[dict[str, Any]],
 ) -> None:
     payload = {
         "run_root": str(run_root),
-        "repair_ablation_dir": str(repair_ablation_dir),
+        "repair_ablation_dir": str(repair_ablation_dir) if repair_ablation_dir else None,
         "main_system_comparison": main_rows,
         "isolated_repair_strategy_comparison": strategy_rows,
     }
@@ -519,19 +528,22 @@ def main() -> None:
     args = parse_args()
     run_root = resolve_path(args.run_root)
     ensure_dir(run_root, "run root")
-    repair_ablation_dir = (
-        resolve_path(args.repair_ablation_dir)
-        if args.repair_ablation_dir
-        else run_root / "debug" / "repair_strategy_ablation" / "full_fixed_verifier"
-    )
+    repair_ablation_dir = None
+    if not args.main_only:
+        repair_ablation_dir = (
+            resolve_path(args.repair_ablation_dir)
+            if args.repair_ablation_dir
+            else run_root / "debug" / "repair_strategy_ablation" / "full_fixed_verifier"
+        )
     output_dir = resolve_path(args.output_dir) if args.output_dir else run_root / "publication_figures"
 
     main_rows = read_main_rows(run_root)
-    strategy_rows = read_repair_strategy_rows(repair_ablation_dir)
+    strategy_rows = [] if args.main_only else read_repair_strategy_rows(repair_ablation_dir)
 
     render_main_accuracy_chart(main_rows, output_dir / "main_system_accuracy.svg", args.width)
     render_repair_safety_chart(main_rows, output_dir / "repair_safety_effectiveness.svg", args.width)
-    render_pareto_chart(strategy_rows, output_dir / "isolated_repair_strategy_pareto.svg", args.width)
+    if not args.main_only:
+        render_pareto_chart(strategy_rows, output_dir / "isolated_repair_strategy_pareto.svg", args.width)
     write_visualization_data(
         output_dir / "visualization_data.json",
         run_root,
@@ -543,7 +555,8 @@ def main() -> None:
     print(f"Wrote SVG figures to: {output_dir}")
     print(f"- {output_dir / 'main_system_accuracy.svg'}")
     print(f"- {output_dir / 'repair_safety_effectiveness.svg'}")
-    print(f"- {output_dir / 'isolated_repair_strategy_pareto.svg'}")
+    if not args.main_only:
+        print(f"- {output_dir / 'isolated_repair_strategy_pareto.svg'}")
     print(f"- {output_dir / 'visualization_data.json'}")
 
 

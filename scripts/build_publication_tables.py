@@ -65,6 +65,16 @@ def main_manifest_from_run_root(run_root: str | Path) -> dict[str, Any]:
             "asa_metrics_json": str(asa),
         }
 
+    def ablation(key: str, label: str) -> dict[str, str]:
+        directory = debug / "internal_ablation" / key
+        return {
+            "key": key,
+            "label": label,
+            "verify_jsonl": str(directory / f"{key}_verify.jsonl"),
+            "metrics_json": str(directory / f"{key}_final_metrics.json"),
+            "asa_metrics_json": str(directory / f"{key}_asa_metrics.json"),
+        }
+
     if held_out_metrics.is_dir():
         return {
             "main_systems": [
@@ -129,6 +139,14 @@ def main_manifest_from_run_root(run_root: str | Path) -> dict[str, Any]:
                 debug / "internal_ablation" / "full" / "full_final_metrics.json",
                 debug / "internal_ablation" / "full" / "full_asa_metrics.json",
             ),
+        ],
+        "ablations": [
+            ablation("full", "FinVeriSQL full"),
+            ablation("wo_intent_decomposer", "w/o Intent Decomposer"),
+            ablation("direct_only", "w/o Probing / direct only"),
+            ablation("wo_compact_semantic_profile", "w/o Compact Semantic Profile"),
+            ablation("wo_scope_constraints", "w/o Scope Constraints in Repair"),
+            ablation("wo_reverification_loop", "w/o re-verification loop"),
         ],
     }
 
@@ -521,7 +539,9 @@ def main() -> None:
 
     if not args.main_only:
         if "ablations" not in manifest:
-            raise ValueError("--run-root supports --main-only only; use --manifest for ablations.")
+            raise ValueError(
+                "This run root contains only main-comparison metrics; use --main-only."
+            )
         ablation_rows = build_ablation_rows(manifest)
         (publication_dir / "internal_ablation_table.md").write_text(
             ablation_markdown(ablation_rows),
