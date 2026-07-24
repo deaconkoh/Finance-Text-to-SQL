@@ -1,0 +1,79 @@
+{
+  "join_mode": "inner_join_question_id",
+  "dedupe_policy": "last",
+  "before_input_rows": 7605,
+  "before_unique_question_ids": 7605,
+  "before_duplicate_rows": 0,
+  "after_input_rows": 6603,
+  "after_unique_question_ids": 6603,
+  "after_duplicate_rows": 0,
+  "joined_question_ids_before_group_d_filter": 6603,
+  "group_d_filter_enabled": true,
+  "group_d_filtered_question_ids": 0,
+  "joined_question_ids": 6603,
+  "sets": [
+    {
+      "label": "before",
+      "total_rows": 6603,
+      "execution_match_available_rows": 6603,
+      "ex_pass_rows": 5048,
+      "ex_fail_rows": 1555,
+      "asa_decision_available_rows": 5947,
+      "asa_strict_pass_rows": 4371,
+      "asa_strict_fail_rows": 1576,
+      "asa_lower_bound_pass_rows": 4371,
+      "inv_evaluable_rows_among_ex_pass": 4392,
+      "inv_failure_count": 21,
+      "ex_accuracy": 0.7645009844010299,
+      "asa_strict_accuracy": 0.7349924331595763,
+      "asa_lower_bound_accuracy": 0.6619718309859155,
+      "fper": 0.0047814207650273225,
+      "fper_lower_bound": 0.13411251980982566,
+      "inv_evaluability_rate_among_ex_pass": 0.8700475435816165,
+      "inv_failure_rate_among_ex_pass_decision_available": 0.0047814207650273225,
+      "fcr_hard_finding_counts": {
+        "posting_side_reversal": 21
+      },
+      "inv_not_evaluable_reason_counts": {
+        "missing_financial_annotation": 606,
+        "unsupported_finance_bearing_expression": 39,
+        "unsupported_finance_bearing_lineage": 617
+      }
+    },
+    {
+      "label": "after",
+      "total_rows": 6603,
+      "execution_match_available_rows": 6603,
+      "ex_pass_rows": 5091,
+      "ex_fail_rows": 1512,
+      "asa_decision_available_rows": 5943,
+      "asa_strict_pass_rows": 4407,
+      "asa_strict_fail_rows": 1536,
+      "asa_lower_bound_pass_rows": 4407,
+      "inv_evaluable_rows_among_ex_pass": 4431,
+      "inv_failure_count": 24,
+      "ex_accuracy": 0.7710131758291685,
+      "asa_strict_accuracy": 0.7415446744068652,
+      "asa_lower_bound_accuracy": 0.6674238982280781,
+      "fper": 0.005416384563303994,
+      "fper_lower_bound": 0.13435474366529168,
+      "inv_evaluability_rate_among_ex_pass": 0.8703594578668238,
+      "inv_failure_rate_among_ex_pass_decision_available": 0.005416384563303994,
+      "fcr_hard_finding_counts": {
+        "posting_side_reversal": 24
+      },
+      "inv_not_evaluable_reason_counts": {
+        "missing_financial_annotation": 606,
+        "unsupported_finance_bearing_expression": 39,
+        "unsupported_finance_bearing_lineage": 621
+      }
+    }
+  ],
+  "deltas": {
+    "ex_accuracy_delta": 0.006512191428138636,
+    "asa_strict_accuracy_delta": 0.006552241247288926,
+    "asa_lower_bound_accuracy_delta": 0.005452067242162628,
+    "fper_delta": 0.0006349637982766719,
+    "fper_lower_bound_delta": 0.0002422238554660172
+  }
+}
