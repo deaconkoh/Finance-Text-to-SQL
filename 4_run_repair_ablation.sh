@@ -28,6 +28,7 @@ export OLLAMA_REPAIR_WORKERS="${OLLAMA_REPAIR_WORKERS:-4}"
 export FINVERISQL_VERIFY_WORKERS="${FINVERISQL_VERIFY_WORKERS:-1}"
 export TRAIN_SEED="${TRAIN_SEED:-42}"
 export RUN_TRAINING="${RUN_TRAINING:-1}"
+export SKIP_TRAIN_BASELINE_EVALUATION="${SKIP_TRAIN_BASELINE_EVALUATION:-0}"
 
 if ! command -v accelerate >/dev/null 2>&1; then
   echo "accelerate is required. Install requirements-linux.txt first." >&2
@@ -156,14 +157,22 @@ python -m src.baseline.baseline_runner \
   --schema-path data/booksql/schema.txt \
   --output-path "$TRAIN_DIR/qwen_few_shot_train.jsonl"
 
-# 4. Evaluate train baseline
-echo "Evaluating train baseline..."
-python -m src.eval.evaluate_baseline_sql \
-  --input-jsonl "$TRAIN_DIR/qwen_few_shot_train.jsonl" \
-  --output-jsonl "$TRAIN_DIR/qwen_few_shot_train_evaluated.jsonl" \
-  --metrics-json "$TRAIN_DIR/qwen_few_shot_train_metrics.json" \
-  --db-path data/booksql/accounting.sqlite \
-  --workers 4
+# 4. Evaluate train baseline unless reusing the completed evaluation artifact.
+if [[ "$SKIP_TRAIN_BASELINE_EVALUATION" == "1" ]]; then
+  if [[ ! -s "$TRAIN_DIR/qwen_few_shot_train_evaluated.jsonl" ]]; then
+    echo "Cannot skip train baseline evaluation: evaluated JSONL is missing or empty." >&2
+    exit 1
+  fi
+  echo "Reusing existing train baseline evaluation: $TRAIN_DIR/qwen_few_shot_train_evaluated.jsonl"
+else
+  echo "Evaluating train baseline..."
+  python -m src.eval.evaluate_baseline_sql \
+    --input-jsonl "$TRAIN_DIR/qwen_few_shot_train.jsonl" \
+    --output-jsonl "$TRAIN_DIR/qwen_few_shot_train_evaluated.jsonl" \
+    --metrics-json "$TRAIN_DIR/qwen_few_shot_train_metrics.json" \
+    --db-path data/booksql/accounting.sqlite \
+    --workers 4
+fi
 
 # 5. Run the full verifier setting on train
 echo "Running full verifier on train..."
