@@ -18,6 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from scripts.build_publication_tables import (  # noqa: E402
     asa_set_metrics,
+    ensure_common_movement_denominator,
     final_ex_accuracy,
     read_json,
     repair_rates,
@@ -185,6 +186,9 @@ def read_main_rows(run_root: Path) -> list[dict[str, Any]]:
                 "corruption_rate": None if is_generator else rates["corruption"],
                 "corruption_count": None if is_generator else rates["corruption_count"],
                 "corruption_total": None if is_generator else rates["corruption_total"],
+                "net_repair_gain_rate": None if is_generator else rates["net_gain_rate"],
+                "net_repair_gain_count": None if is_generator else rates["net_gain_count"],
+                "net_repair_gain_total": None if is_generator else rates["net_gain_total"],
             }
         )
 
@@ -206,7 +210,9 @@ def read_main_rows(run_root: Path) -> list[dict[str, Any]]:
         "generic_execution_guided_refine",
         "finverisql_full",
     ]
-    return sorted(rows, key=lambda row: order.index(row["key"]))
+    rows = sorted(rows, key=lambda row: order.index(row["key"]))
+    ensure_common_movement_denominator(rows, "Main visualization")
+    return rows
 
 
 def read_repair_strategy_rows(repair_dir: Path) -> list[dict[str, Any]]:
@@ -219,8 +225,12 @@ def read_repair_strategy_rows(repair_dir: Path) -> list[dict[str, Any]]:
             raise ValueError(f"Expected list in {table_path}")
         rows = [row for row in data if isinstance(row, dict)]
         found = {row.get("strategy") for row in rows}
-        if all(key in found for key in STRATEGY_KEYS):
-            return sorted(rows, key=lambda row: STRATEGY_KEYS.index(row["strategy"]))
+        if all(key in found for key in STRATEGY_KEYS) and all(
+            "net_repair_gain_rate" in row for row in rows
+        ):
+            rows = sorted(rows, key=lambda row: STRATEGY_KEYS.index(row["strategy"]))
+            ensure_common_movement_denominator(rows, "Repair-strategy visualization")
+            return rows
 
     rows: list[dict[str, Any]] = []
     missing: list[str] = []
@@ -248,6 +258,9 @@ def read_repair_strategy_rows(repair_dir: Path) -> list[dict[str, Any]]:
                 "corruption_count": rates["corruption_count"],
                 "corruption_total": rates["corruption_total"],
                 "corruption_rate": rates["corruption"],
+                "net_repair_gain_count": rates["net_gain_count"],
+                "net_repair_gain_total": rates["net_gain_total"],
+                "net_repair_gain_rate": rates["net_gain_rate"],
                 "asa_strict_accuracy": asa_after.get("asa_strict_accuracy"),
                 "asa_lower_bound_accuracy": asa_after.get("asa_lower_bound_accuracy"),
                 "fper": asa_after.get("fper"),
@@ -259,6 +272,7 @@ def read_repair_strategy_rows(repair_dir: Path) -> list[dict[str, Any]]:
         raise FileNotFoundError(f"Missing repair strategy metric files:\n{formatted}")
     if len(rows) != len(STRATEGY_KEYS):
         raise ValueError("Repair strategy ablation outputs are incomplete.")
+    ensure_common_movement_denominator(rows, "Repair-strategy visualization")
     return rows
 
 
@@ -372,12 +386,12 @@ def render_repair_safety_chart(rows: list[dict[str, Any]], output_path: Path, wi
     lines = svg_header(width, height)
     lines.extend(
         [
-            '<text class="title" x="40" y="42">Repair Safety and Effectiveness</text>',
-            '<text class="subtitle" x="40" y="66">Correction is plotted right of zero; corruption is plotted left of zero.</text>',
+            '<text class="title" x="40" y="42">End-to-End Repair Movement</text>',
+            '<text class="subtitle" x="40" y="66">All rates use the shared eligible A/B/C evaluation population; correction is right of zero and corruption is left.</text>',
             *draw_legend(
                 [
-                    ("Correction Rate", COLORS["correction"]),
-                    ("Corruption Rate", COLORS["corruption"]),
+                    ("Correction / N", COLORS["correction"]),
+                    ("Corruption / N", COLORS["corruption"]),
                 ],
                 40,
                 92,
@@ -420,6 +434,8 @@ def render_repair_safety_chart(rows: list[dict[str, Any]], output_path: Path, wi
         else:
             lines.append(f'<text class="small" x="{center_x + corr_w + 8:.1f}" y="{y_mid + 5:.1f}">{escape(pct(row.get("correction_rate")))}</text>')
             lines.append(f'<text class="small" text-anchor="end" x="{center_x - corrupt_w - 8:.1f}" y="{y_mid + 5:.1f}">{escape(pct(row.get("corruption_rate")))}</text>')
+            net_gain = value_or_zero(row.get("net_repair_gain_rate"))
+            lines.append(f'<text class="small" x="{width - right:.1f}" y="{y_mid + 5:.1f}" text-anchor="end">NRG {net_gain * 100:+.2f} pp</text>')
 
     lines.append("</svg>")
     write_svg(output_path, lines)
@@ -458,8 +474,8 @@ def render_pareto_chart(rows: list[dict[str, Any]], output_path: Path, width: in
 
     lines.append(f'<line x1="{left}" y1="{top + plot_h}" x2="{left + plot_w}" y2="{top + plot_h}" stroke="{COLORS["axis"]}" stroke-width="1.5"/>')
     lines.append(f'<line x1="{left}" y1="{top}" x2="{left}" y2="{top + plot_h}" stroke="{COLORS["axis"]}" stroke-width="1.5"/>')
-    lines.append(f'<text class="label" text-anchor="middle" x="{left + plot_w / 2:.1f}" y="{height - 32}">Corruption Rate</text>')
-    lines.append(f'<text class="label" transform="translate(34 {top + plot_h / 2:.1f}) rotate(-90)" text-anchor="middle">Correction Rate</text>')
+    lines.append(f'<text class="label" text-anchor="middle" x="{left + plot_w / 2:.1f}" y="{height - 32}">Corruption (% of eligible A/B/C rows)</text>')
+    lines.append(f'<text class="label" transform="translate(34 {top + plot_h / 2:.1f}) rotate(-90)" text-anchor="middle">Correction (% of eligible A/B/C rows)</text>')
 
     for row in rows:
         x_rate = value_or_zero(row.get("corruption_rate"))
@@ -475,7 +491,7 @@ def render_pareto_chart(rows: list[dict[str, Any]], output_path: Path, width: in
         lines.append(f'<text class="label" x="{x + radius + 8:.1f}" y="{y - 4:.1f}">{escape(str(row["label"]))}</text>')
         lines.append(
             f'<text class="small" x="{x + radius + 8:.1f}" y="{y + 14:.1f}">'
-            f'corr {escape(pct(row.get("correction_rate")))}, corrupt {escape(pct(row.get("corruption_rate")))}, ASA {escape(pct(row.get("asa_strict_accuracy")))}</text>'
+            f'corr {escape(pct(row.get("correction_rate")))}, corrupt {escape(pct(row.get("corruption_rate")))}, NRG {value_or_zero(row.get("net_repair_gain_rate")) * 100:+.2f} pp, ASA {escape(pct(row.get("asa_strict_accuracy")))}</text>'
         )
 
     lines.append("</svg>")

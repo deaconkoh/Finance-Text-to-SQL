@@ -1,0 +1,58 @@
+[
+  {
+    "system": "Generator only",
+    "ex_accuracy": 0.7645009844010299,
+    "asa_strict_accuracy": 0.7349924331595763,
+    "correction_rate": null,
+    "correction_count": null,
+    "correction_total": null,
+    "corruption_rate": null,
+    "corruption_count": null,
+    "corruption_total": null,
+    "net_repair_gain_rate": null,
+    "net_repair_gain_count": null,
+    "net_repair_gain_total": null
+  },
+  {
+    "system": "Generator + generic self-refine",
+    "ex_accuracy": 0.7325458125094654,
+    "asa_strict_accuracy": 0.7020319786808794,
+    "correction_rate": 0.005906406179009541,
+    "correction_count": 39,
+    "correction_total": 6603,
+    "corruption_rate": 0.037861578070573984,
+    "corruption_count": 250,
+    "corruption_total": 6603,
+    "net_repair_gain_rate": -0.03195517189156444,
+    "net_repair_gain_count": -211,
+    "net_repair_gain_total": 6603
+  },
+  {
+    "system": "Generator + generic execution-guided refine",
+    "ex_accuracy": 0.7682871422080872,
+    "asa_strict_accuracy": 0.7356243620279006,
+    "correction_rate": 0.0074208693018325,
+    "correction_count": 49,
+    "correction_total": 6603,
+    "corruption_rate": 0.003634711494775102,
+    "corruption_count": 24,
+    "corruption_total": 6603,
+    "net_repair_gain_rate": 0.003786157807057398,
+    "net_repair_gain_count": 25,
+    "net_repair_gain_total": 6603
+  },
+  {
+    "system": "Generator + FinVeriSQL full",
+    "ex_accuracy": 0.7710131758291685,
+    "asa_strict_accuracy": 0.7415446744068652,
+    "correction_rate": 0.0066636377404210205,
+    "correction_count": 44,
+    "correction_total": 6603,
+    "corruption_rate": 0.00015144631228229593,
+    "corruption_count": 1,
+    "corruption_total": 6603,
+    "net_repair_gain_rate": 0.006512191428138725,
+    "net_repair_gain_count": 43,
+    "net_repair_gain_total": 6603
+  }
+]

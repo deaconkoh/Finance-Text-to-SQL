@@ -1412,6 +1412,15 @@ def test_final_sql_evaluator_normalizes_net_gain_after_corruption() -> None:
     assert summary["repair_safety"]["net_gain_after_corruption_count"] == 1
     assert summary["repair_safety"]["net_gain_after_corruption_denominator"] == 3
     assert summary["repair_safety"]["net_gain_after_corruption"] == 1 / 3
+    assert summary["repair_movement"] == {
+        "eligible_evaluation_rows": 3,
+        "corrected_rows": 2,
+        "corrected_rate": 2 / 3,
+        "corrupted_rows": 1,
+        "corrupted_rate": 1 / 3,
+        "net_repair_gain_rows": 1,
+        "net_repair_gain_rate": 1 / 3,
+    }
     assert summary["headline_metrics"]["net_gain_after_corruption"] == 1 / 3
 
 

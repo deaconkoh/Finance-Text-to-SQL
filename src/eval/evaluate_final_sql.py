@@ -418,6 +418,18 @@ def build_repair_summary(
         net_gain_after_corruption_count,
         original_metric_total,
     )
+    repair_movement = {
+        # These end-to-end outcome movements intentionally share one A/B/C
+        # denominator so systems with different repair-routing policies remain
+        # directly comparable.
+        "eligible_evaluation_rows": original_metric_total,
+        "corrected_rows": wrong_to_correct,
+        "corrected_rate": safe_rate(wrong_to_correct, original_metric_total),
+        "corrupted_rows": corrupted_correct,
+        "corrupted_rate": safe_rate(corrupted_correct, original_metric_total),
+        "net_repair_gain_rows": net_gain_after_corruption_count,
+        "net_repair_gain_rate": net_gain_after_corruption,
+    }
 
     return {
         "final_sql_source_counts": dict(source_counts),
@@ -502,6 +514,7 @@ def build_repair_summary(
             "net_gain_after_corruption": net_gain_after_corruption,
             "net_gain_after_corruption_denominator": original_metric_total,
         },
+        "repair_movement": repair_movement,
         "probe_summary": {
             "probed_rows": probed_rows,
             "probe_rate": safe_rate(probed_rows, total_rows),
@@ -577,6 +590,7 @@ def write_metrics_markdown(path: Path, metrics: dict[str, Any]) -> None:
     coverage = repair_summary["repair_coverage"]
     effectiveness = repair_summary["repair_effectiveness"]
     safety = repair_summary["repair_safety"]
+    movement = repair_summary["repair_movement"]
     original_groups = repair_summary["original_group_counts"]
     final_groups = repair_summary["final_group_counts"]
     original_total = baseline["original_metric_total_examples"]
@@ -601,7 +615,9 @@ def write_metrics_markdown(path: Path, metrics: dict[str, Any]) -> None:
         f"| Final execution accuracy | {format_rate(headline['final_execution_accuracy'])} |",
         f"| Execution accuracy delta | {format_rate(headline['delta_execution_accuracy'])} |",
         f"| Net correct gain | {headline['net_correct_gain']} |",
-        f"| Corruption rate | {format_count_rate(safety['corrupted_originally_correct_rows'], safety['original_correct_repaired_rows'])} |",
+        f"| Correction (% of eligible A/B/C rows) | {format_count_rate(movement['corrected_rows'], movement['eligible_evaluation_rows'])} |",
+        f"| Corruption (% of eligible A/B/C rows) | {format_count_rate(movement['corrupted_rows'], movement['eligible_evaluation_rows'])} |",
+        f"| Net repair gain (% of eligible A/B/C rows) | {format_count_rate(movement['net_repair_gain_rows'], movement['eligible_evaluation_rows'])} |",
         f"| Targeted repair success | {format_count_rate(effectiveness['applied_wrong_to_correct_rows'], effectiveness['applied_wrong_rows'])} |",
         f"| End-to-end repair precision | {format_count_rate(effectiveness['applied_wrong_to_correct_rows'], coverage['applied_repairs'])} |",
         "",
@@ -648,7 +664,7 @@ def write_metrics_markdown(path: Path, metrics: dict[str, Any]) -> None:
         "| --- | ---: |",
         f"| True repair targets touched | {format_count_rate(effectiveness['applied_wrong_rows'], coverage['applied_repairs'])} |",
         f"| True targets fixed | {format_count_rate(effectiveness['applied_wrong_to_correct_rows'], effectiveness['applied_wrong_rows'])} |",
-        f"| All original wrong/non-exec fixed | {format_count_rate(effectiveness['wrong_to_correct_rows'], effectiveness['originally_wrong_or_nonexec_rows'])} |",
+        f"| Correction among initially wrong/non-executable rows | {format_count_rate(effectiveness['wrong_to_correct_rows'], effectiveness['originally_wrong_or_nonexec_rows'])} |",
         f"| End-to-end precision across all applied repairs | {format_count_rate(effectiveness['applied_wrong_to_correct_rows'], coverage['applied_repairs'])} |",
         f"| Repaired SQL executable | {format_count_rate(effectiveness['executable_repairs'], coverage['generated_repairs'])} |",
         "",
@@ -658,10 +674,9 @@ def write_metrics_markdown(path: Path, metrics: dict[str, Any]) -> None:
         "| --- | ---: |",
         f"| Originally correct rows touched by repair | {format_count_rate(safety['original_correct_repaired_rows'], safety['originally_correct_rows'])} |",
         f"| Preserved originally correct rows | {format_count_rate(safety['preserved_originally_correct_rows'], safety['originally_correct_rows'])} |",
-        f"| Corrupted originally correct touched rows | {format_count_rate(safety['corrupted_originally_correct_rows'], safety['original_correct_repaired_rows'])} |",
-        f"| Overall corruption among originally correct | {format_count_rate(safety['corrupted_originally_correct_rows'], safety['originally_correct_rows'])} |",
-        f"| Net gain after corruption | {format_rate(safety['net_gain_after_corruption'])} |",
-        f"| Net gain after corruption count | {safety['net_gain_after_corruption_count']}/{safety['net_gain_after_corruption_denominator']} |",
+        f"| Corruption among touched initially correct rows | {format_count_rate(safety['corrupted_originally_correct_rows'], safety['original_correct_repaired_rows'])} |",
+        f"| Corruption among all initially correct rows | {format_count_rate(safety['corrupted_originally_correct_rows'], safety['originally_correct_rows'])} |",
+        f"| Net repair gain (% of eligible A/B/C rows) | {format_count_rate(movement['net_repair_gain_rows'], movement['eligible_evaluation_rows'])} |",
         "",
         "## Readout",
         "",

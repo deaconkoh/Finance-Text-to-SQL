@@ -14,7 +14,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.build_publication_tables import asa_set_metrics, pct, repair_rates
+from scripts.build_publication_tables import (
+    asa_set_metrics,
+    ensure_common_movement_denominator,
+    pct,
+    repair_rates,
+    signed_pp,
+)
 
 
 STRATEGY_LABELS = {
@@ -73,25 +79,33 @@ def build_rows(ablation_dir: Path, strategies: list[str]) -> list[dict[str, Any]
                 "corruption_count": rates["corruption_count"],
                 "corruption_total": rates["corruption_total"],
                 "corruption_rate": rates["corruption"],
+                "net_repair_gain_count": rates["net_gain_count"],
+                "net_repair_gain_total": rates["net_gain_total"],
+                "net_repair_gain_rate": rates["net_gain_rate"],
                 "asa_strict_accuracy": asa_after.get("asa_strict_accuracy"),
                 "asa_lower_bound_accuracy": asa_after.get("asa_lower_bound_accuracy"),
                 "fper": asa_after.get("fper"),
             }
         )
+    ensure_common_movement_denominator(rows, "Repair-strategy ablation")
     return rows
 
 
 def write_outputs(rows: list[dict[str, Any]], output_md: Path, output_json: Path) -> None:
     lines = [
-        "| Repair Strategy | Correction Rate | Corruption Rate | ASA |",
-        "| --- | ---: | ---: | ---: |",
+        "| Repair Strategy | Correction (% of N) | Corruption (% of N) | Net Repair Gain (% of N) | ASA |",
+        "| --- | ---: | ---: | ---: | ---: |",
     ]
     for row in rows:
         lines.append(
-            "| {strategy} | {correction} | {corruption} | {asa} |".format(
+            "| {strategy} | {correction} | {corruption} | {net_gain} | {asa} |".format(
                 strategy=row["label"],
                 correction=count_rate(row["correction_count"], row["correction_total"]),
                 corruption=count_rate(row["corruption_count"], row["corruption_total"]),
+                net_gain=(
+                    f"{signed_pp(row['net_repair_gain_rate'])} "
+                    f"({row['net_repair_gain_count']}/{row['net_repair_gain_total']})"
+                ),
                 asa=pct(row["asa_strict_accuracy"]),
             )
         )

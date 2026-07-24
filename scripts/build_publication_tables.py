@@ -18,18 +18,119 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build main comparison and ablation tables from run artifacts.",
     )
-    parser.add_argument("--manifest", required=True, help="Run manifest JSON path.")
+    source_group = parser.add_mutually_exclusive_group(required=True)
+    source_group.add_argument("--manifest", help="Run manifest JSON path.")
+    source_group.add_argument(
+        "--run-root",
+        help=(
+            "Completed labeled-run root. Uses the standard 2_run_ablations.sh "
+            "artifact layout without requiring debug/run_manifest.json."
+        ),
+    )
     parser.add_argument(
         "--publication-dir",
-        required=True,
+        default=None,
         help="Directory for publication Markdown tables only.",
     )
     parser.add_argument(
         "--debug-dir",
-        required=True,
+        default=None,
         help="Directory for machine-readable table JSON.",
     )
+    parser.add_argument(
+        "--main-only",
+        action="store_true",
+        help="Build only the main comparison table; do not require ablation artifacts.",
+    )
     return parser.parse_args()
+
+
+def main_manifest_from_run_root(run_root: str | Path) -> dict[str, Any]:
+    root = Path(run_root)
+    held_out_metrics = root / "metrics"
+    debug = root / "debug"
+
+    def system(
+        key: str,
+        label: str,
+        kind: str,
+        metrics: Path,
+        asa: Path,
+    ) -> dict[str, str]:
+        return {
+            "key": key,
+            "label": label,
+            "kind": kind,
+            "metrics_json": str(metrics),
+            "asa_metrics_json": str(asa),
+        }
+
+    if held_out_metrics.is_dir():
+        return {
+            "main_systems": [
+                system(
+                    "generator_only",
+                    "Generator only",
+                    "generator",
+                    held_out_metrics / "baseline" / "metrics.json",
+                    held_out_metrics / "baseline" / "asa_metrics.json",
+                ),
+                system(
+                    "generic_self_refine",
+                    "Generator + generic self-refine",
+                    "repair",
+                    held_out_metrics / "main_comparison" / "generic_self_refine" / "final_metrics.json",
+                    held_out_metrics / "main_comparison" / "generic_self_refine" / "asa_metrics.json",
+                ),
+                system(
+                    "generic_execution_guided_refine",
+                    "Generator + generic execution-guided refine",
+                    "repair",
+                    held_out_metrics / "main_comparison" / "generic_execution_guided_refine" / "final_metrics.json",
+                    held_out_metrics / "main_comparison" / "generic_execution_guided_refine" / "asa_metrics.json",
+                ),
+                system(
+                    "finverisql_full",
+                    "Generator + FinVeriSQL full",
+                    "repair",
+                    held_out_metrics / "finverisql_full" / "final_metrics.json",
+                    held_out_metrics / "finverisql_full" / "asa_metrics.json",
+                ),
+            ],
+        }
+
+    return {
+        "main_systems": [
+            system(
+                "generator_only",
+                "Generator only",
+                "generator",
+                debug / "baseline" / "qwen_few_shot_validation_metrics.json",
+                debug / "baseline" / "qwen_few_shot_validation_asa_metrics.json",
+            ),
+            system(
+                "generic_self_refine",
+                "Generator + generic self-refine",
+                "repair",
+                debug / "main_comparison" / "generic_self_refine" / "generic_self_refine_final_metrics.json",
+                debug / "main_comparison" / "generic_self_refine" / "generic_self_refine_asa_metrics.json",
+            ),
+            system(
+                "generic_execution_guided_refine",
+                "Generator + generic execution-guided refine",
+                "repair",
+                debug / "main_comparison" / "generic_execution_guided_refine" / "generic_execution_guided_refine_final_metrics.json",
+                debug / "main_comparison" / "generic_execution_guided_refine" / "generic_execution_guided_refine_asa_metrics.json",
+            ),
+            system(
+                "finverisql_full",
+                "Generator + FinVeriSQL full",
+                "repair",
+                debug / "internal_ablation" / "full" / "full_final_metrics.json",
+                debug / "internal_ablation" / "full" / "full_asa_metrics.json",
+            ),
+        ],
+    }
 
 
 def read_json(path: str | Path) -> dict[str, Any]:
@@ -146,11 +247,16 @@ def repair_rates(metrics: dict[str, Any]) -> dict[str, Any]:
             "net_gain_count": None,
             "net_gain_rate": None,
             "net_gain_total": None,
+            "conditional_correction": None,
+            "conditional_correction_total": None,
+            "conditional_corruption": None,
+            "conditional_corruption_total": None,
         }
 
     effectiveness = repair_summary.get("repair_effectiveness") or {}
     safety = repair_summary.get("repair_safety") or {}
     baseline = repair_summary.get("baseline_comparison") or {}
+    movement = repair_summary.get("repair_movement") or {}
 
     fixed = int(effectiveness.get("wrong_to_correct_rows") or 0)
     wrong_total = int(effectiveness.get("originally_wrong_or_nonexec_rows") or 0)
@@ -163,17 +269,54 @@ def repair_rates(metrics: dict[str, Any]) -> dict[str, Any]:
     )
     net_gain_count = fixed - corrupted
 
+    # New metrics contain a canonical common denominator. Completed artifacts
+    # produced before this field existed are reconstructed from their durable
+    # movement counts and baseline A/B/C total.
+    movement_total_value = movement.get("eligible_evaluation_rows")
+    if isinstance(movement_total_value, int):
+        movement_total = movement_total_value
+    else:
+        movement_total = denominator
+    corrected_value = movement.get("corrected_rows")
+    if isinstance(corrected_value, int):
+        fixed = corrected_value
+    corrupted_value = movement.get("corrupted_rows")
+    if isinstance(corrupted_value, int):
+        corrupted = corrupted_value
+    net_gain_value = movement.get("net_repair_gain_rows")
+    if isinstance(net_gain_value, int):
+        net_gain_count = net_gain_value
+    else:
+        net_gain_count = fixed - corrupted
+
     return {
-        "correction": safe_rate(fixed, wrong_total),
+        "correction": safe_rate(fixed, movement_total),
         "correction_count": fixed,
-        "correction_total": wrong_total,
-        "corruption": safe_rate(corrupted, originally_correct),
+        "correction_total": movement_total,
+        "corruption": safe_rate(corrupted, movement_total),
         "corruption_count": corrupted,
-        "corruption_total": originally_correct,
+        "corruption_total": movement_total,
         "net_gain_count": net_gain_count,
-        "net_gain_rate": safe_rate(net_gain_count, denominator),
-        "net_gain_total": denominator,
+        "net_gain_rate": safe_rate(net_gain_count, movement_total),
+        "net_gain_total": movement_total,
+        "conditional_correction": safe_rate(fixed, wrong_total),
+        "conditional_correction_total": wrong_total,
+        "conditional_corruption": safe_rate(corrupted, originally_correct),
+        "conditional_corruption_total": originally_correct,
     }
+
+
+def ensure_common_movement_denominator(rows: list[dict[str, Any]], label: str) -> None:
+    totals = {
+        int(row["correction_total"])
+        for row in rows
+        if row.get("correction_total") is not None
+    }
+    if len(totals) > 1:
+        formatted = ", ".join(str(total) for total in sorted(totals))
+        raise ValueError(
+            f"{label} rows do not share one eligible A/B/C denominator: {formatted}."
+        )
 
 
 def detection_metrics(verify_jsonl: str | Path) -> dict[str, Any]:
@@ -219,13 +362,14 @@ def build_main_rows(manifest: dict[str, Any]) -> list[dict[str, Any]]:
         metrics = read_json(system["metrics_json"])
         asa_metrics = read_json(system["asa_metrics_json"])
         rates = repair_rates(metrics)
+        asa_after = asa_set_metrics(asa_metrics)
 
         is_generator = system.get("kind") == "generator"
         rows.append(
             {
                 "system": system["label"],
                 "ex_accuracy": final_ex_accuracy(metrics),
-                "asa_metrics": asa_cell(asa_metrics),
+                "asa_strict_accuracy": asa_after.get("asa_strict_accuracy"),
                 "correction_rate": None if is_generator else rates["correction"],
                 "correction_count": None if is_generator else rates["correction_count"],
                 "correction_total": None if is_generator else rates["correction_total"],
@@ -238,6 +382,7 @@ def build_main_rows(manifest: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
 
+    ensure_common_movement_denominator(rows, "Main comparison")
     return rows
 
 
@@ -259,6 +404,9 @@ def build_ablation_rows(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                 "corruption_rate": rates["corruption"],
                 "corruption_count": rates["corruption_count"],
                 "corruption_total": rates["corruption_total"],
+                "net_repair_gain_rate": rates["net_gain_rate"],
+                "net_repair_gain_count": rates["net_gain_count"],
+                "net_repair_gain_total": rates["net_gain_total"],
                 "ex_accuracy": final_ex_accuracy(metrics),
             }
         )
@@ -274,13 +422,14 @@ def build_ablation_rows(manifest: dict[str, Any]) -> list[dict[str, Any]]:
             else row["ex_accuracy"] - full_ex
         )
 
+    ensure_common_movement_denominator(raw_rows, "Internal ablation")
     return raw_rows
 
 
 def main_markdown(rows: list[dict[str, Any]]) -> str:
     lines = [
-        "| System | EX Accuracy | ASA Metrics | Correction Rate | Corruption Rate | Net Repair Gain |",
-        "| --- | ---: | --- | ---: | ---: | ---: |",
+        "| System | EX | ASA | Corrected | Corrupted | Net Gain |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
     ]
 
     for row in rows:
@@ -298,7 +447,7 @@ def main_markdown(rows: list[dict[str, Any]]) -> str:
             "| {system} | {ex} | {asa} | {correction} | {corruption} | {net_gain} |".format(
                 system=row["system"],
                 ex=pct(row["ex_accuracy"]),
-                asa=row["asa_metrics"],
+                asa=pct(row["asa_strict_accuracy"]),
                 correction=correction,
                 corruption=corruption,
                 net_gain=net_gain,
@@ -310,21 +459,25 @@ def main_markdown(rows: list[dict[str, Any]]) -> str:
 
 def ablation_markdown(rows: list[dict[str, Any]]) -> str:
     lines = [
-        "| System / Ablation | Detection Precision | Detection Recall | Detection F1 | Correction Rate | Corruption Rate | EX Accuracy | Delta EX vs Full |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| System / Ablation | Detection Precision | Detection Recall | Detection F1 | Correction (% of N) | Corruption (% of N) | Net Repair Gain (% of N) | EX Accuracy | Delta EX vs Full |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
 
     for row in rows:
         detection = row["detection"]
         delta = "0.00 pp" if row["key"] == "full" else signed_pp(row["delta_ex_vs_full"])
         lines.append(
-            "| {system} | {precision} | {recall} | {f1} | {correction} | {corruption} | {ex} | {delta} |".format(
+            "| {system} | {precision} | {recall} | {f1} | {correction} | {corruption} | {net_gain} | {ex} | {delta} |".format(
                 system=row["system"],
                 precision=count_rate(detection["tp"], detection["tp"] + detection["fp"]),
                 recall=count_rate(detection["tp"], detection["tp"] + detection["fn"]),
                 f1=pct(detection["f1"]),
                 correction=count_rate(row["correction_count"], row["correction_total"]),
                 corruption=count_rate(row["corruption_count"], row["corruption_total"]),
+                net_gain=(
+                    f"{signed_pp(row['net_repair_gain_rate'])} "
+                    f"({row['net_repair_gain_count']}/{row['net_repair_gain_total']})"
+                ),
                 ex=pct(row["ex_accuracy"]),
                 delta=delta,
             )
@@ -344,26 +497,37 @@ def write_json(path: str | Path, data: Any) -> None:
 
 def main() -> None:
     args = parse_args()
-    manifest = read_json(args.manifest)
-    publication_dir = Path(args.publication_dir)
-    debug_dir = Path(args.debug_dir)
+    run_root = Path(args.run_root) if args.run_root else None
+    manifest = read_json(args.manifest) if args.manifest else main_manifest_from_run_root(run_root)
+    publication_dir = Path(args.publication_dir) if args.publication_dir else (
+        run_root / "publication_tables" if run_root else None
+    )
+    debug_dir = Path(args.debug_dir) if args.debug_dir else (
+        (run_root / "tables") if run_root and (run_root / "metrics").is_dir()
+        else (run_root / "debug" / "tables" if run_root else None)
+    )
+    if publication_dir is None or debug_dir is None:
+        raise ValueError("--publication-dir and --debug-dir are required with --manifest.")
 
     publication_dir.mkdir(parents=True, exist_ok=True)
     debug_dir.mkdir(parents=True, exist_ok=True)
 
     main_rows = build_main_rows(manifest)
-    ablation_rows = build_ablation_rows(manifest)
-
     (publication_dir / "main_comparison_table.md").write_text(
         main_markdown(main_rows),
         encoding="utf-8",
     )
-    (publication_dir / "internal_ablation_table.md").write_text(
-        ablation_markdown(ablation_rows),
-        encoding="utf-8",
-    )
     write_json(debug_dir / "main_comparison_table.json", main_rows)
-    write_json(debug_dir / "internal_ablation_table.json", ablation_rows)
+
+    if not args.main_only:
+        if "ablations" not in manifest:
+            raise ValueError("--run-root supports --main-only only; use --manifest for ablations.")
+        ablation_rows = build_ablation_rows(manifest)
+        (publication_dir / "internal_ablation_table.md").write_text(
+            ablation_markdown(ablation_rows),
+            encoding="utf-8",
+        )
+        write_json(debug_dir / "internal_ablation_table.json", ablation_rows)
 
     print(f"Wrote publication tables to {publication_dir}")
     print(f"Wrote machine-readable tables to {debug_dir}")

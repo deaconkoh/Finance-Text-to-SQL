@@ -5,6 +5,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pytest
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -21,6 +23,11 @@ from src.repair_learning.prompting import parse_repaired_sql_from_text
 from src.repair_learning.rl import RewardConfig, compute_repair_reward, compute_repair_rewards
 from scripts.dev.train_rl_repairer import parse_args as parse_rl_training_args
 from scripts.dev.build_repair_strategy_ablation_table import build_rows, write_outputs
+from scripts.build_publication_tables import (
+    ensure_common_movement_denominator,
+    main_manifest_from_run_root,
+    main_markdown,
+)
 
 
 def _semantic_candidate(group: str = GROUP_B) -> dict:
@@ -280,11 +287,84 @@ def test_repair_strategy_table_has_requested_columns(tmp_path: Path) -> None:
     write_outputs(rows, output_md, output_json)
 
     assert output_md.read_text(encoding="utf-8").splitlines()[0] == (
-        "| Repair Strategy | Correction Rate | Corruption Rate | ASA |"
+        "| Repair Strategy | Correction (% of N) | Corruption (% of N) | Net Repair Gain (% of N) | ASA |"
     )
-    assert "| Prompted Llama-3.1-8B | 50.00% (2/4) | 20.00% (1/5) | 75.00% |" in output_md.read_text(
+    assert "| Prompted Llama-3.1-8B | 22.22% (2/9) | 11.11% (1/9) | +11.11 pp (1/9) | 75.00% |" in output_md.read_text(
         encoding="utf-8"
     )
     row = json.loads(output_json.read_text(encoding="utf-8"))[0]
+    assert row["correction_total"] == 9
+    assert row["corruption_total"] == 9
+    assert row["net_repair_gain_total"] == 9
     assert row["asa_strict_accuracy"] == 0.75
     assert row["asa_lower_bound_accuracy"] == 0.7
+
+
+def test_common_movement_denominator_rejects_misaligned_rows() -> None:
+    with pytest.raises(ValueError, match="do not share one eligible A/B/C denominator"):
+        ensure_common_movement_denominator(
+            [
+                {"correction_total": 100},
+                {"correction_total": 99},
+            ],
+            "test",
+        )
+
+
+def test_main_comparison_table_uses_compact_manuscript_columns() -> None:
+    markdown = main_markdown(
+        [
+            {
+                "system": "Generator only",
+                "ex_accuracy": 0.7645,
+                "asa_strict_accuracy": 0.662,
+                "correction_rate": None,
+            },
+            {
+                "system": "FinVeriSQL",
+                "ex_accuracy": 0.7708,
+                "asa_strict_accuracy": 0.6666,
+                "correction_rate": 0.02,
+                "correction_count": 2,
+                "correction_total": 100,
+                "corruption_rate": 0.0,
+                "corruption_count": 0,
+                "corruption_total": 100,
+                "net_repair_gain_rate": 0.02,
+                "net_repair_gain_count": 2,
+                "net_repair_gain_total": 100,
+            },
+        ]
+    )
+
+    lines = markdown.splitlines()
+    assert lines[0] == "| System | EX | ASA | Corrected | Corrupted | Net Gain |"
+    assert "Delta" not in markdown
+    assert "| Generator only | 76.45% | 66.20% | - | - | - |" in markdown
+    assert "| FinVeriSQL | 77.08% | 66.66% | 2.00% (2/100) | 0.00% (0/100) | +2.00 pp (2/100) |" in markdown
+
+
+def test_main_manifest_from_run_root_uses_standard_artifact_paths(tmp_path: Path) -> None:
+    manifest = main_manifest_from_run_root(tmp_path)
+    systems = manifest["main_systems"]
+
+    assert [system["key"] for system in systems] == [
+        "generator_only",
+        "generic_self_refine",
+        "generic_execution_guided_refine",
+        "finverisql_full",
+    ]
+    assert systems[-1]["metrics_json"] == str(
+        tmp_path / "debug" / "internal_ablation" / "full" / "full_final_metrics.json"
+    )
+
+
+def test_main_manifest_from_held_out_root_uses_metrics_layout(tmp_path: Path) -> None:
+    (tmp_path / "metrics").mkdir()
+    manifest = main_manifest_from_run_root(tmp_path)
+    systems = manifest["main_systems"]
+
+    assert systems[0]["metrics_json"] == str(tmp_path / "metrics" / "baseline" / "metrics.json")
+    assert systems[-1]["metrics_json"] == str(
+        tmp_path / "metrics" / "finverisql_full" / "final_metrics.json"
+    )
