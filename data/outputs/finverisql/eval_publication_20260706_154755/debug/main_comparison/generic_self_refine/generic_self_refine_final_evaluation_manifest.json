@@ -1,9 +1,9 @@
 {
-  "stage": "asa",
-  "evaluation_kind": "baseline",
+  "stage": "evaluation",
+  "evaluation_kind": "final",
   "input": {
-    "path": "data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl",
-    "sha256": "9c6008c4c91e77c65e97ae01c13c64a84a528ea6e00a35d4ebb97f06c6cb5250",
+    "path": "data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine.jsonl",
+    "sha256": "fbb3831730b29bbf16b5907ff1e09c35d4936a4a42438e9fb53d972088964100",
     "question_ids": [
       "booksql_070828",
       "booksql_070829",
@@ -7613,8 +7613,8 @@
     ]
   },
   "before": {
-    "path": "data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl",
-    "sha256": "9c6008c4c91e77c65e97ae01c13c64a84a528ea6e00a35d4ebb97f06c6cb5250",
+    "path": "data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine.jsonl",
+    "sha256": "fbb3831730b29bbf16b5907ff1e09c35d4936a4a42438e9fb53d972088964100",
     "question_ids": [
       "booksql_070828",
       "booksql_070829",
@@ -15227,10 +15227,12 @@
   "db_sha256": "89f890e3d55db08fe7f32fcfead6f56e22a3ab2615f9fc382f30e29ce9b94763",
   "schema_sha256": "8e4e656f66d08d811b5b804c163cc7a3a7cf638cfcc78b1d82d17093e29ef7ee",
   "outputs": {
-    "output_jsonl": "data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_rows.jsonl",
-    "metrics_json": "data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.json",
-    "metrics_md": "data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_metrics.md",
-    "row_output_jsonl": "data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_asa_rows.jsonl",
-    "required_outputs": []
+    "output_jsonl": "data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine_final_evaluated.jsonl",
+    "metrics_json": "data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine_final_metrics.json",
+    "metrics_md": "data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine_final_metrics.md",
+    "row_output_jsonl": null,
+    "required_outputs": [
+      "data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_self_refine/generic_self_refine_adapted_final_input.jsonl"
+    ]
   }
 }

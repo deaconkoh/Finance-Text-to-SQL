@@ -192,3 +192,18 @@ after: ex_acc=0.7683 asa_strict=0.7356 asa_lower_bound=0.6549 fper=0.0055
 Saved metrics to: data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_execution_guided_refine/generic_execution_guided_refine_asa_metrics.json
 Saved markdown to: data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_execution_guided_refine/generic_execution_guided_refine_asa_metrics.md
 Saved row diagnostics to: data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_execution_guided_refine/generic_execution_guided_refine_asa_rows.jsonl
+
+[2026-07-22T08:57:38Z] python3 -m src.baseline.generic_refine.execution_guided --input-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_execution_guided_refine/generic_execution_guided_refine.jsonl --schema-path data/booksql/schema.txt --model-name llama3.1:8b --backend ollama --temperature 0 --num-predict 768 --timeout 300 --workers 4
+Generic refinement workers: 4
+Saved generic refinement outputs to: data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_execution_guided_refine/generic_execution_guided_refine.jsonl
+Refine summary: attempted=0, changed=0, failed=0, skipped=0
+
+[2026-07-24T03:01:46Z] python3 -m src.baseline.generic_refine.execution_guided --input-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_execution_guided_refine/generic_execution_guided_refine.jsonl --schema-path data/booksql/schema.txt --model-name llama3.1:8b --backend ollama --temperature 0 --num-predict 768 --timeout 300 --workers 4
+Generic refinement workers: 4
+Saved generic refinement outputs to: data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_execution_guided_refine/generic_execution_guided_refine.jsonl
+Refine summary: attempted=0, changed=0, failed=0, skipped=0
+
+[2026-07-24T03:04:09Z] python3 -m src.baseline.generic_refine.execution_guided --input-path data/outputs/finverisql/eval_publication_20260706_154755/debug/baseline/qwen_few_shot_validation_evaluated.jsonl --output-path data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_execution_guided_refine/generic_execution_guided_refine.jsonl --schema-path data/booksql/schema.txt --model-name llama3.1:8b --backend ollama --temperature 0 --num-predict 768 --timeout 300 --workers 4
+Generic refinement workers: 4
+Saved generic refinement outputs to: data/outputs/finverisql/eval_publication_20260706_154755/debug/main_comparison/generic_execution_guided_refine/generic_execution_guided_refine.jsonl
+Refine summary: attempted=0, changed=0, failed=0, skipped=0
