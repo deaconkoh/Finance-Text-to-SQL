@@ -1,0 +1,742 @@
+{
+  "run_root": "/Users/deaconkoh/Desktop/Finance-Text-to-SQL/data/outputs/finverisql/eval_publication_20260706_154755/development_excluded_partial_main",
+  "repair_ablation_dir": null,
+  "main_system_comparison": [
+    {
+      "key": "generator_only",
+      "label": "Generator only",
+      "kind": "generator",
+      "ex_accuracy": 0.7646696758309397,
+      "asa_strict_accuracy": 0.7347915242652084,
+      "fper": 0.005243676742751388,
+      "correction_rate": null,
+      "correction_count": null,
+      "correction_total": null,
+      "corruption_rate": null,
+      "corruption_count": null,
+      "corruption_total": null,
+      "net_repair_gain_rate": null,
+      "net_repair_gain_count": null,
+      "net_repair_gain_total": null
+    },
+    {
+      "key": "generic_self_refine",
+      "label": "Generator + generic self-refine",
+      "kind": "repair",
+      "ex_accuracy": 0.7324579400902749,
+      "asa_strict_accuracy": 0.7015801354401806,
+      "fper": 0.005758157389635317,
+      "correction_rate": 0.006565449322938038,
+      "correction_count": 32,
+      "correction_total": 4874,
+      "corruption_rate": 0.03877718506360279,
+      "corruption_count": 189,
+      "corruption_total": 4874,
+      "net_repair_gain_rate": -0.03221173574066475,
+      "net_repair_gain_count": -157,
+      "net_repair_gain_total": 4874
+    },
+    {
+      "key": "generic_execution_guided_refine",
+      "label": "Generator + generic execution-guided refine",
+      "kind": "repair",
+      "ex_accuracy": 0.7683627410750923,
+      "asa_strict_accuracy": 0.7351924406545287,
+      "fper": 0.006230529595015576,
+      "correction_rate": 0.007796471070988921,
+      "correction_count": 38,
+      "correction_total": 4874,
+      "corruption_rate": 0.004103405826836274,
+      "corruption_count": 20,
+      "corruption_total": 4874,
+      "net_repair_gain_rate": 0.0036930652441526466,
+      "net_repair_gain_count": 18,
+      "net_repair_gain_total": 4874
+    },
+    {
+      "key": "finverisql_full",
+      "label": "ADiR",
+      "kind": "repair",
+      "ex_accuracy": 0.7708247845711941,
+      "asa_strict_accuracy": 0.740766073871409,
+      "fper": 0.0061180789232181095,
+      "correction_rate": 0.006155108740254411,
+      "correction_count": 30,
+      "correction_total": 4874,
+      "corruption_rate": 0.0,
+      "corruption_count": 0,
+      "corruption_total": 4874,
+      "net_repair_gain_rate": 0.006155108740254411,
+      "net_repair_gain_count": 30,
+      "net_repair_gain_total": 4874
+    }
+  ],
+  "correction_corruption_tradeoff": {
+    "denominator": 4874,
+    "systems": [
+      {
+        "key": "generic_self_refine",
+        "label": "Generic self-refine",
+        "correction_count": 32,
+        "correction_rate": 0.006565449322938038,
+        "corruption_count": 189,
+        "corruption_rate": 0.03877718506360279,
+        "net_repair_gain_count": -157,
+        "net_repair_gain_rate": -0.03221173574066475,
+        "denominator": 4874
+      },
+      {
+        "key": "generic_execution_guided_refine",
+        "label": "Execution-guided",
+        "correction_count": 38,
+        "correction_rate": 0.007796471070988921,
+        "corruption_count": 20,
+        "corruption_rate": 0.004103405826836274,
+        "net_repair_gain_count": 18,
+        "net_repair_gain_rate": 0.0036930652441526466,
+        "denominator": 4874
+      },
+      {
+        "key": "finverisql_full",
+        "label": "ADiR",
+        "correction_count": 30,
+        "correction_rate": 0.006155108740254411,
+        "corruption_count": 0,
+        "corruption_rate": 0.0,
+        "net_repair_gain_count": 30,
+        "net_repair_gain_rate": 0.006155108740254411,
+        "denominator": 4874
+      }
+    ],
+    "axes": {
+      "x": "corruption_rate",
+      "y": "correction_rate",
+      "rate_denominator": "eligible held-out A/B/C rows"
+    }
+  },
+  "isolated_repair_strategy_comparison": [],
+  "dimension_diagnostic_repair_breakdown": [
+    {
+      "dimension": "financial_object_error",
+      "label": "D1 Financial Object",
+      "corrected": 0,
+      "remains_wrong": 0,
+      "preserved_correct": 0,
+      "corrupted": 0,
+      "total": 0
+    },
+    {
+      "dimension": "financial_measure_error",
+      "label": "D2 Financial Measure",
+      "corrected": 9,
+      "remains_wrong": 626,
+      "preserved_correct": 2777,
+      "corrupted": 0,
+      "total": 3412
+    },
+    {
+      "dimension": "computation_logic_error",
+      "label": "D3 Computation Scope",
+      "corrected": 0,
+      "remains_wrong": 349,
+      "preserved_correct": 927,
+      "corrupted": 0,
+      "total": 1276
+    },
+    {
+      "dimension": "non_executable_error",
+      "label": "Non-executable",
+      "corrected": 21,
+      "remains_wrong": 121,
+      "preserved_correct": 0,
+      "corrupted": 0,
+      "total": 142
+    },
+    {
+      "dimension": null,
+      "label": "No rejected label",
+      "corrected": 0,
+      "remains_wrong": 21,
+      "preserved_correct": 23,
+      "corrupted": 0,
+      "total": 44
+    }
+  ],
+  "edit_scope_heatmap": {
+    "clauses": [
+      "SELECT",
+      "FROM",
+      "JOIN",
+      "WHERE",
+      "GROUP BY",
+      "HAVING",
+      "ORDER BY",
+      "LIMIT"
+    ],
+    "dimensions": [
+      {
+        "dimension": "financial_object_error",
+        "label": "D1 Financial Object",
+        "allowed_clauses": [
+          "WHERE"
+        ],
+        "disallowed_clauses": [
+          "SELECT",
+          "FROM",
+          "JOIN",
+          "GROUP BY",
+          "HAVING",
+          "ORDER BY",
+          "LIMIT"
+        ],
+        "proposed_denominator": 0,
+        "accepted_denominator": 0,
+        "rejected_denominator": 0,
+        "proposed": {
+          "SELECT": {
+            "count": 0,
+            "rate": null
+          },
+          "FROM": {
+            "count": 0,
+            "rate": null
+          },
+          "JOIN": {
+            "count": 0,
+            "rate": null
+          },
+          "WHERE": {
+            "count": 0,
+            "rate": null
+          },
+          "GROUP BY": {
+            "count": 0,
+            "rate": null
+          },
+          "HAVING": {
+            "count": 0,
+            "rate": null
+          },
+          "ORDER BY": {
+            "count": 0,
+            "rate": null
+          },
+          "LIMIT": {
+            "count": 0,
+            "rate": null
+          }
+        },
+        "accepted": {
+          "SELECT": {
+            "count": 0,
+            "rate": null
+          },
+          "FROM": {
+            "count": 0,
+            "rate": null
+          },
+          "JOIN": {
+            "count": 0,
+            "rate": null
+          },
+          "WHERE": {
+            "count": 0,
+            "rate": null
+          },
+          "GROUP BY": {
+            "count": 0,
+            "rate": null
+          },
+          "HAVING": {
+            "count": 0,
+            "rate": null
+          },
+          "ORDER BY": {
+            "count": 0,
+            "rate": null
+          },
+          "LIMIT": {
+            "count": 0,
+            "rate": null
+          }
+        }
+      },
+      {
+        "dimension": "financial_measure_error",
+        "label": "D2 Financial Measure",
+        "allowed_clauses": [
+          "SELECT"
+        ],
+        "disallowed_clauses": [
+          "FROM",
+          "JOIN",
+          "WHERE",
+          "GROUP BY",
+          "HAVING",
+          "ORDER BY",
+          "LIMIT"
+        ],
+        "proposed_denominator": 2957,
+        "accepted_denominator": 2550,
+        "rejected_denominator": 407,
+        "proposed": {
+          "SELECT": {
+            "count": 2209,
+            "rate": 0.7470409198512006
+          },
+          "FROM": {
+            "count": 0,
+            "rate": 0.0
+          },
+          "JOIN": {
+            "count": 40,
+            "rate": 0.013527223537368955
+          },
+          "WHERE": {
+            "count": 125,
+            "rate": 0.042272573554277985
+          },
+          "GROUP BY": {
+            "count": 172,
+            "rate": 0.05816706121068651
+          },
+          "HAVING": {
+            "count": 47,
+            "rate": 0.015894487656408524
+          },
+          "ORDER BY": {
+            "count": 49,
+            "rate": 0.01657084883327697
+          },
+          "LIMIT": {
+            "count": 32,
+            "rate": 0.010821778829895164
+          }
+        },
+        "accepted": {
+          "SELECT": {
+            "count": 1997,
+            "rate": 0.7831372549019607
+          },
+          "FROM": {
+            "count": 0,
+            "rate": 0.0
+          },
+          "JOIN": {
+            "count": 0,
+            "rate": 0.0
+          },
+          "WHERE": {
+            "count": 0,
+            "rate": 0.0
+          },
+          "GROUP BY": {
+            "count": 0,
+            "rate": 0.0
+          },
+          "HAVING": {
+            "count": 0,
+            "rate": 0.0
+          },
+          "ORDER BY": {
+            "count": 0,
+            "rate": 0.0
+          },
+          "LIMIT": {
+            "count": 0,
+            "rate": 0.0
+          }
+        }
+      },
+      {
+        "dimension": "computation_logic_error",
+        "label": "D3 Computation Scope",
+        "allowed_clauses": [
+          "GROUP BY",
+          "HAVING",
+          "LIMIT",
+          "ORDER BY",
+          "SELECT",
+          "WHERE"
+        ],
+        "disallowed_clauses": [
+          "FROM",
+          "JOIN"
+        ],
+        "proposed_denominator": 1070,
+        "accepted_denominator": 972,
+        "rejected_denominator": 98,
+        "proposed": {
+          "SELECT": {
+            "count": 333,
+            "rate": 0.31121495327102805
+          },
+          "FROM": {
+            "count": 4,
+            "rate": 0.003738317757009346
+          },
+          "JOIN": {
+            "count": 86,
+            "rate": 0.08037383177570094
+          },
+          "WHERE": {
+            "count": 91,
+            "rate": 0.08504672897196262
+          },
+          "GROUP BY": {
+            "count": 702,
+            "rate": 0.6560747663551402
+          },
+          "HAVING": {
+            "count": 0,
+            "rate": 0.0
+          },
+          "ORDER BY": {
+            "count": 57,
+            "rate": 0.05327102803738318
+          },
+          "LIMIT": {
+            "count": 54,
+            "rate": 0.05046728971962617
+          }
+        },
+        "accepted": {
+          "SELECT": {
+            "count": 279,
+            "rate": 0.28703703703703703
+          },
+          "FROM": {
+            "count": 0,
+            "rate": 0.0
+          },
+          "JOIN": {
+            "count": 0,
+            "rate": 0.0
+          },
+          "WHERE": {
+            "count": 62,
+            "rate": 0.06378600823045268
+          },
+          "GROUP BY": {
+            "count": 657,
+            "rate": 0.6759259259259259
+          },
+          "HAVING": {
+            "count": 0,
+            "rate": 0.0
+          },
+          "ORDER BY": {
+            "count": 45,
+            "rate": 0.046296296296296294
+          },
+          "LIMIT": {
+            "count": 42,
+            "rate": 0.043209876543209874
+          }
+        }
+      }
+    ],
+    "denominator_definition": {
+      "proposed": "All D1-D3 repair attempts inspected by the deterministic scope validator, including accepted and rejected attempts.",
+      "accepted": "All D1-D3 repair attempts accepted by the scope validator."
+    }
+  },
+  "error_resolution_sankey": {
+    "total": 4874,
+    "metric": "execution_match",
+    "nodes": [
+      {
+        "id": "all_candidates",
+        "stage": "input",
+        "label": "All Portable Candidates",
+        "count": 4874,
+        "rate": 1.0
+      },
+      {
+        "id": "verifier_accepted",
+        "stage": "verifier",
+        "label": "Verifier accepted",
+        "count": 3,
+        "rate": 0.0006155108740254411
+      },
+      {
+        "id": "financial_object_error",
+        "stage": "verifier",
+        "label": "D1 Financial Object",
+        "count": 0,
+        "rate": 0.0
+      },
+      {
+        "id": "financial_measure_error",
+        "stage": "verifier",
+        "label": "D2 Financial Measure",
+        "count": 3412,
+        "rate": 0.7000410340582683
+      },
+      {
+        "id": "computation_logic_error",
+        "stage": "verifier",
+        "label": "D3 Computation Scope",
+        "count": 1276,
+        "rate": 0.26179729175215427
+      },
+      {
+        "id": "non_executable_error",
+        "stage": "verifier",
+        "label": "Non-executable",
+        "count": 142,
+        "rate": 0.029134181370537547
+      },
+      {
+        "id": "abstained",
+        "stage": "verifier",
+        "label": "Abstained",
+        "count": 41,
+        "rate": 0.008411981945014363
+      },
+      {
+        "id": "preserved_correct",
+        "stage": "outcome",
+        "label": "Preserved correct",
+        "count": 3727,
+        "rate": 0.7646696758309397
+      },
+      {
+        "id": "corrected",
+        "stage": "outcome",
+        "label": "Corrected",
+        "count": 30,
+        "rate": 0.006155108740254411
+      },
+      {
+        "id": "remains_wrong",
+        "stage": "outcome",
+        "label": "Remains wrong",
+        "count": 1117,
+        "rate": 0.2291752154288059
+      },
+      {
+        "id": "corrupted",
+        "stage": "outcome",
+        "label": "Corrupted",
+        "count": 0,
+        "rate": 0.0
+      }
+    ],
+    "links": [
+      {
+        "source": "all_candidates",
+        "target": "verifier_accepted",
+        "count": 3,
+        "rate": 0.0006155108740254411
+      },
+      {
+        "source": "all_candidates",
+        "target": "financial_object_error",
+        "count": 0,
+        "rate": 0.0
+      },
+      {
+        "source": "all_candidates",
+        "target": "financial_measure_error",
+        "count": 3412,
+        "rate": 0.7000410340582683
+      },
+      {
+        "source": "all_candidates",
+        "target": "computation_logic_error",
+        "count": 1276,
+        "rate": 0.26179729175215427
+      },
+      {
+        "source": "all_candidates",
+        "target": "non_executable_error",
+        "count": 142,
+        "rate": 0.029134181370537547
+      },
+      {
+        "source": "all_candidates",
+        "target": "abstained",
+        "count": 41,
+        "rate": 0.008411981945014363
+      },
+      {
+        "source": "verifier_accepted",
+        "target": "preserved_correct",
+        "count": 3,
+        "rate": 0.0006155108740254411
+      },
+      {
+        "source": "financial_measure_error",
+        "target": "preserved_correct",
+        "count": 2777,
+        "rate": 0.5697578990562167
+      },
+      {
+        "source": "financial_measure_error",
+        "target": "corrected",
+        "count": 9,
+        "rate": 0.0018465326220763233
+      },
+      {
+        "source": "financial_measure_error",
+        "target": "remains_wrong",
+        "count": 626,
+        "rate": 0.12843660237997537
+      },
+      {
+        "source": "computation_logic_error",
+        "target": "preserved_correct",
+        "count": 927,
+        "rate": 0.1901928600738613
+      },
+      {
+        "source": "computation_logic_error",
+        "target": "remains_wrong",
+        "count": 349,
+        "rate": 0.07160443167829299
+      },
+      {
+        "source": "non_executable_error",
+        "target": "corrected",
+        "count": 21,
+        "rate": 0.004308576118178088
+      },
+      {
+        "source": "non_executable_error",
+        "target": "remains_wrong",
+        "count": 121,
+        "rate": 0.024825605252359457
+      },
+      {
+        "source": "abstained",
+        "target": "preserved_correct",
+        "count": 20,
+        "rate": 0.004103405826836274
+      },
+      {
+        "source": "abstained",
+        "target": "remains_wrong",
+        "count": 21,
+        "rate": 0.004308576118178088
+      }
+    ],
+    "middle_counts": {
+      "verifier_accepted": 3,
+      "financial_object_error": 0,
+      "financial_measure_error": 3412,
+      "computation_logic_error": 1276,
+      "non_executable_error": 142,
+      "abstained": 41
+    },
+    "outcome_counts": {
+      "preserved_correct": 3727,
+      "corrected": 30,
+      "remains_wrong": 1117,
+      "corrupted": 0
+    },
+    "movement_counts": {
+      "verifier_accepted": {
+        "preserved_correct": 3,
+        "corrected": 0,
+        "remains_wrong": 0,
+        "corrupted": 0
+      },
+      "financial_object_error": {
+        "preserved_correct": 0,
+        "corrected": 0,
+        "remains_wrong": 0,
+        "corrupted": 0
+      },
+      "financial_measure_error": {
+        "preserved_correct": 2777,
+        "corrected": 9,
+        "remains_wrong": 626,
+        "corrupted": 0
+      },
+      "computation_logic_error": {
+        "preserved_correct": 927,
+        "corrected": 0,
+        "remains_wrong": 349,
+        "corrupted": 0
+      },
+      "non_executable_error": {
+        "preserved_correct": 0,
+        "corrected": 21,
+        "remains_wrong": 121,
+        "corrupted": 0
+      },
+      "abstained": {
+        "preserved_correct": 20,
+        "corrected": 0,
+        "remains_wrong": 21,
+        "corrupted": 0
+      }
+    }
+  },
+  "self_probing_convergence": [
+    {
+      "probe_depth": 0,
+      "total": 4705,
+      "verification_accuracy": 0.20935175345377258,
+      "rejection_precision": 0.20935175345377258,
+      "rejection_recall": 1.0,
+      "rejection_f1": 0.3462214411247803
+    },
+    {
+      "probe_depth": 1,
+      "total": 4705,
+      "verification_accuracy": 0.20935175345377258,
+      "rejection_precision": 0.20935175345377258,
+      "rejection_recall": 1.0,
+      "rejection_f1": 0.3462214411247803
+    },
+    {
+      "probe_depth": 2,
+      "total": 4705,
+      "verification_accuracy": 0.20977683315621679,
+      "rejection_precision": 0.20944078247926856,
+      "rejection_recall": 1.0,
+      "rejection_f1": 0.34634317862165964
+    },
+    {
+      "probe_depth": 3,
+      "total": 4705,
+      "verification_accuracy": 0.2099893730074389,
+      "rejection_precision": 0.2094853253934496,
+      "rejection_recall": 1.0,
+      "rejection_f1": 0.3464040794795147
+    }
+  ],
+  "qualitative_case_study": {
+    "question_id": "booksql_071296",
+    "question": "When was the last time we sold Housing",
+    "mismatch_type": "financial_measure_error",
+    "mismatch_label": "D2 Financial Measure",
+    "failed_evidence": [
+      "measure_kind: \"date\""
+    ],
+    "repair_hint": "Check if the measure kind in the SQL query matches the required measure kind for the intent.",
+    "original_sql": "SELECT MAX(transaction_date) AS Last_Sale_Date \nFROM master_txn_table \nWHERE Product_Service = 'Housing';",
+    "repaired_sql": "SELECT Transaction_DATE AS Last_Sale_Date FROM master_txn_table WHERE Product_Service = 'Housing' GROUP BY date(Transaction_DATE) ORDER BY Transaction_DATE DESC LIMIT 1;",
+    "allowed_clause_changes": [
+      "SELECT",
+      "GROUP BY",
+      "HAVING",
+      "ORDER BY",
+      "LIMIT",
+      "WHERE"
+    ],
+    "disallowed_clause_changes": [
+      "FROM",
+      "JOIN"
+    ],
+    "clause_change_summary": [
+      "SELECT",
+      "GROUP BY",
+      "ORDER BY",
+      "LIMIT"
+    ],
+    "final_sql_source": "specialized_chain_repair"
+  }
+}

@@ -336,6 +336,17 @@ def write_summary(path: str | Path, summary: dict[str, Any]) -> None:
     )
 
 
+def append_jsonl(path: str | Path, rows: list[dict[str, Any]]) -> None:
+    """Append and flush one durable generation batch."""
+
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("a", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+        handle.flush()
+
+
 def generate_repairs_from_file(
     fixed_verifier_jsonl: str | Path,
     output_jsonl: str | Path,
@@ -346,15 +357,78 @@ def generate_repairs_from_file(
     strategy: str,
 ) -> dict[str, Any]:
     rows = read_jsonl(fixed_verifier_jsonl)
-    output_rows, summary = generate_repair_rows(
-        verifier_rows=rows,
-        schema_text=schema_text,
-        generator=generator,
-        repair_model=repair_model,
-        strategy=strategy,
-    )
+    source_by_id: dict[str, dict[str, Any]] = {}
+    for index, row in enumerate(rows):
+        question_id = str(row.get("question_id") or row.get("id") or "")
+        if not question_id:
+            raise ValueError(f"Fixed-verifier row {index} is missing question_id.")
+        if question_id in source_by_id:
+            raise ValueError(f"Fixed-verifier input has duplicate question_id: {question_id}")
+        source_by_id[question_id] = row
+
+    output_path = Path(output_jsonl)
+    completed_ids: set[str] = set()
+    existing_rows: list[dict[str, Any]] = []
+    if output_path.exists():
+        existing_rows = read_jsonl(output_path)
+        for index, row in enumerate(existing_rows):
+            question_id = str(row.get("question_id") or row.get("id") or "")
+            if not question_id:
+                raise ValueError(f"Existing repair row {index} is missing question_id.")
+            if question_id in completed_ids:
+                raise ValueError(f"Existing repair output has duplicate question_id: {question_id}")
+            source = source_by_id.get(question_id)
+            if source is None:
+                raise ValueError(f"Existing repair output has foreign question_id: {question_id}")
+            if row.get("repair_strategy") != strategy:
+                raise ValueError(
+                    f"Existing repair output strategy mismatch for {question_id}: "
+                    f"{row.get('repair_strategy')!r} != {strategy!r}"
+                )
+            if row.get("repair_model") != repair_model:
+                raise ValueError(
+                    f"Existing repair output model mismatch for {question_id}: "
+                    f"{row.get('repair_model')!r} != {repair_model!r}"
+                )
+            if str(row.get("original_generated_sql") or "") != str(
+                source.get("generated_sql") or ""
+            ):
+                raise ValueError(
+                    f"Existing repair output context mismatch for question_id: {question_id}"
+                )
+            completed_ids.add(question_id)
+
+    pending_rows = [
+        row
+        for row in rows
+        if str(row.get("question_id") or row.get("id")) not in completed_ids
+    ]
+    generated_rows: list[dict[str, Any]] = []
+    for start in range(0, len(pending_rows), 32):
+        batch_rows, _ = generate_repair_rows(
+            verifier_rows=pending_rows[start : start + 32],
+            schema_text=schema_text,
+            generator=generator,
+            repair_model=repair_model,
+            strategy=strategy,
+        )
+        append_jsonl(output_path, batch_rows)
+        generated_rows.extend(batch_rows)
+
+    output_rows = existing_rows + generated_rows
+    skipped = sum(1 for row in output_rows if row.get("repair_status") == "skipped")
+    summary = {
+        "input_rows": len(rows),
+        "completed_rows": len(output_rows),
+        "resumed_rows": len(existing_rows),
+        "new_rows": len(generated_rows),
+        "attempted_repairs": len(output_rows) - skipped,
+        "generated_repairs": sum(1 for row in output_rows if row.get("repaired_sql")),
+        "skipped_rows": skipped,
+        "strategy": strategy,
+        "repair_model": repair_model,
+    }
     summary["fixed_verifier_jsonl"] = str(fixed_verifier_jsonl)
     summary["output_jsonl"] = str(output_jsonl)
-    write_jsonl(output_jsonl, output_rows)
     write_summary(summary_json, summary)
     return summary

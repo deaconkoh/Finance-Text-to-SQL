@@ -12,6 +12,7 @@ model.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 import hashlib
 import json
 import random
@@ -179,7 +180,10 @@ def run_precompute(args: argparse.Namespace) -> None:
     if args.limit is not None:
         rows = rows[: args.limit]
 
+    attempt_path = Path(args.attempt_log_path) if args.attempt_log_path else Path(args.output_path)
     completed_keys = load_completed_keys(args.output_path)
+    if attempt_path != Path(args.output_path):
+        completed_keys |= load_completed_keys(attempt_path)
     seen_input_keys: set[tuple[str, str, str, str]] = set()
     pending_rows: list[dict[str, Any]] = []
 
@@ -204,7 +208,7 @@ def run_precompute(args: argparse.Namespace) -> None:
     print(f"Intent mode: {args.intent_mode}")
     print(f"Sample seed: {args.sample_seed if args.sample_seed is not None else 'disabled'}")
 
-    if not pending_rows:
+    if not pending_rows and attempt_path == Path(args.output_path):
         print("Nothing left to decompose.")
         return
 
@@ -232,15 +236,17 @@ def run_precompute(args: argparse.Namespace) -> None:
         schema_store=schema_store,
     )
 
-    for row in tqdm(pending_rows):
+    def run_one(row: dict[str, Any]) -> dict[str, Any]:
         question = row.get(args.question_key)
         question_id = get_question_id(row, args.question_key)
 
         try:
             question_text = get_question(row, args.question_key)
             intent_representation = decomposer.decompose(question_text)
+            if not isinstance(intent_representation, dict):
+                raise ValueError("Intent decomposer returned no structured representation.")
 
-            output_row = {
+            output_row: dict[str, Any] = {
                 "question_id": question_id,
                 "db_id": row.get("db_id"),
                 "split": row.get("split"),
@@ -273,7 +279,83 @@ def run_precompute(args: argparse.Namespace) -> None:
                 "error": str(exc),
             }
 
-        append_jsonl(args.output_path, output_row)
+        if "official_test_id" in row:
+            output_row["official_test_id"] = row["official_test_id"]
+        return output_row
+
+    attempt_path.parent.mkdir(parents=True, exist_ok=True)
+    with attempt_path.open("a", encoding="utf-8") as handle:
+        def record(output_row: dict[str, Any]) -> None:
+            handle.write(json.dumps(output_row, ensure_ascii=False) + "\n")
+            handle.flush()
+
+        if args.workers == 1:
+            for row in tqdm(pending_rows):
+                record(run_one(row))
+        else:
+            row_iter = iter(pending_rows)
+            futures: dict[Future[dict[str, Any]], dict[str, Any]] = {}
+            with ThreadPoolExecutor(max_workers=args.workers) as executor:
+                with tqdm(total=len(pending_rows)) as progress:
+                    for _ in range(args.workers):
+                        try:
+                            row = next(row_iter)
+                        except StopIteration:
+                            break
+                        futures[executor.submit(run_one, row)] = row
+                    while futures:
+                        done, _ = wait(futures, return_when=FIRST_COMPLETED)
+                        for future in done:
+                            futures.pop(future)
+                            record(future.result())
+                            progress.update(1)
+                            try:
+                                next_row = next(row_iter)
+                            except StopIteration:
+                                continue
+                            futures[executor.submit(run_one, next_row)] = next_row
+
+    if attempt_path != Path(args.output_path):
+        successful: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+        for path in (Path(args.output_path), attempt_path):
+            if not path.exists():
+                continue
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                cached = json.loads(line)
+                if cached.get("status") != "success":
+                    continue
+                key = (
+                    str(cached.get("question_id") or cached.get("id")),
+                    str(cached.get("question_hash")),
+                    str(cached.get("intent_model")),
+                    str(cached.get("intent_mode")),
+                )
+                existing = successful.get(key)
+                if existing is not None and existing != cached:
+                    raise ValueError(f"Multiple successful intent attempts for question_id={key[0]}")
+                successful[key] = cached
+        ordered: list[dict[str, Any]] = []
+        missing: list[str] = []
+        for row in rows:
+            key = get_cache_key(row, args.question_key, args.model_name, args.intent_mode)
+            cached = successful.get(key)
+            if cached is None:
+                missing.append(get_question_id(row, args.question_key))
+            else:
+                ordered.append(cached)
+        output_path = Path(args.output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in ordered),
+            encoding="utf-8",
+        )
+        if args.require_all_success and missing:
+            raise RuntimeError(
+                f"Intent precomputation has {len(missing)} failed or missing rows; "
+                f"resume the same command. First IDs: {missing[:5]}"
+            )
 
     print(f"Saved intent cache to: {args.output_path}")
 
@@ -364,12 +446,32 @@ def parse_args() -> argparse.Namespace:
         default="question",
         help="JSONL key containing the natural language question.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Concurrent intent workers. Values above 1 require --backend ollama.",
+    )
+    parser.add_argument(
+        "--attempt-log-path",
+        default=None,
+        help="Optional append-only attempt JSONL; --output-path is then rewritten canonically in input order.",
+    )
+    parser.add_argument(
+        "--require-all-success",
+        action="store_true",
+        help="Exit non-zero unless every selected row has a successful canonical intent.",
+    )
 
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    if args.workers <= 0:
+        raise ValueError("--workers must be >= 1.")
+    if args.workers > 1 and args.backend != "ollama":
+        raise ValueError("--workers > 1 is supported only with --backend ollama.")
     run_precompute(args)
 
 

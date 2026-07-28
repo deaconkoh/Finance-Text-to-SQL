@@ -29,12 +29,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--predictions-jsonl", required=True)
     parser.add_argument("--table-md", required=True)
     parser.add_argument("--summary-json", required=True)
+    parser.add_argument("--expected-source-jsonl", default=None)
+    parser.add_argument("--system-name", default="FinVeriSQL")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     rows = read_jsonl(Path(args.input_jsonl))
+    expected_ids: list[int] | None = None
+    if args.expected_source_jsonl:
+        expected_rows = read_jsonl(Path(args.expected_source_jsonl))
+        expected_ids = [int(row["official_test_id"]) for row in expected_rows]
+        if expected_ids != list(range(len(expected_ids))):
+            raise ValueError("Expected official source IDs are not contiguous and zero-based.")
     selected: list[dict[str, Any]] = []
     seen: set[int] = set()
     for row in rows:
@@ -44,25 +52,36 @@ def main() -> None:
             raise ValueError(f"Invalid official test id in row: {row.get('question_id')!r}") from exc
         if official_id in seen:
             raise ValueError(f"Duplicate official test id: {official_id}")
+        if row.get("status") not in (None, "success", "skipped"):
+            raise ValueError(f"Official test row {official_id} is not terminally successful.")
         seen.add(official_id)
         selected.append({**row, "official_test_id": official_id, "final_sql": final_sql(row)})
 
     selected.sort(key=lambda row: row["official_test_id"])
     if [row["official_test_id"] for row in selected] != list(range(len(selected))):
         raise ValueError("Official test IDs must be a complete contiguous zero-based sequence.")
+    if expected_ids is not None and [row["official_test_id"] for row in selected] != expected_ids:
+        raise ValueError("Submission official ID set does not match the recorded test source.")
 
     predictions = Path(args.predictions_jsonl)
     predictions.parent.mkdir(parents=True, exist_ok=True)
     predictions.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in selected), encoding="utf-8")
     submission = Path(args.submission_csv)
+    submission.parent.mkdir(parents=True, exist_ok=True)
     with submission.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["id", "pred_sql"])
+        writer = csv.DictWriter(handle, fieldnames=["", "id", "pred_sql"])
         writer.writeheader()
-        writer.writerows({"id": row["official_test_id"], "pred_sql": row["final_sql"]} for row in selected)
+        writer.writerows(
+            {"": index, "id": row["official_test_id"], "pred_sql": row["final_sql"]}
+            for index, row in enumerate(selected)
+        )
 
-    table = "| System | Test EX |\n| --- | ---: |\n| FinVeriSQL | Pending official BookSQL leaderboard submission |\n"
+    table = (
+        "| System | Test EX |\n| --- | ---: |\n"
+        f"| {args.system_name} | Pending official BookSQL leaderboard submission |\n"
+    )
     Path(args.table_md).write_text(table, encoding="utf-8")
-    Path(args.summary_json).write_text(json.dumps({"system": "FinVeriSQL", "test_ex": None, "status": "pending_official_leaderboard_submission", "submission_csv": str(submission), "rows": len(selected)}, indent=2) + "\n", encoding="utf-8")
+    Path(args.summary_json).write_text(json.dumps({"system": args.system_name, "test_ex": None, "status": "pending_official_leaderboard_submission", "submission_csv": str(submission), "rows": len(selected)}, indent=2) + "\n", encoding="utf-8")
     print(f"Wrote BookSQL submission with {len(selected)} rows: {submission}")
 
 

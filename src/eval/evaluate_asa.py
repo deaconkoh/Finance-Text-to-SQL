@@ -57,6 +57,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--limit", type=int, default=None, help="Optional limit after joining.")
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Bounded CPU workers; row diagnostics retain input order.",
+    )
+    parser.add_argument(
         "--include-fcr-details",
         action="store_true",
         help="Include full FCR findings and warnings in row diagnostics.",
@@ -277,6 +283,7 @@ def main() -> None:
         schema_annotations,
         label="before",
         include_fcr_details=args.include_fcr_details,
+        workers=args.workers,
     )
     sets = [before_metrics]
     outputs = before_outputs
@@ -288,6 +295,7 @@ def main() -> None:
             schema_annotations,
             label="after",
             include_fcr_details=args.include_fcr_details,
+            workers=args.workers,
         )
         sets.append(after_metrics)
         outputs.extend(after_outputs)

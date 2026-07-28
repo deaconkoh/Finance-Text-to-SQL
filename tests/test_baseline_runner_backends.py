@@ -129,3 +129,50 @@ def test_ollama_qwen_output_still_flows_through_extract_sql(tmp_path) -> None:
     assert row["raw_output"] == "Here is the SQL:\n```sql\nSELECT 1;\n```"
     assert row["model_metadata"] == metadata
     assert row["status"] == "success"
+
+
+def test_parallel_baseline_attempts_are_canonicalized_and_resumed(tmp_path) -> None:
+    output_path = tmp_path / "baseline.jsonl"
+    attempts = tmp_path / "attempts.jsonl"
+    records = [
+        {
+            "question_id": str(index),
+            "official_test_id": index,
+            "db_id": "booksql",
+            "split": "test",
+            "level": "easy",
+            "question": f"Return {index}.",
+            "schema": "Table t(x)",
+            "gold_sql": None,
+        }
+        for index in range(3)
+    ]
+    failed_once = {"1"}
+
+    def generate(prompt: str) -> str:
+        if "Return 1." in prompt and "1" in failed_once:
+            failed_once.remove("1")
+            raise RuntimeError("interrupted")
+        return "SELECT 1;"
+
+    kwargs = dict(
+        records=records,
+        output_path=output_path,
+        generator="qwen",
+        generate_fn=generate,
+        model_metadata={"model_name": "qwen"},
+        workers=2,
+        attempt_log_path=attempts,
+        require_all_success=True,
+    )
+    import pytest
+
+    with pytest.raises(RuntimeError, match="failed or missing"):
+        baseline_runner.run_baseline_inference(**kwargs)
+    baseline_runner.run_baseline_inference(**kwargs)
+    rows = [
+        json.loads(line)
+        for line in output_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [row["official_test_id"] for row in rows] == [0, 1, 2]
+    assert all(row["status"] == "success" for row in rows)

@@ -324,6 +324,8 @@ def load_completed_keys(
         for line in f:
             try:
                 row = json.loads(line)
+                if row.get("status") not in (None, "success"):
+                    continue
 
                 completed.add(
                     (
@@ -620,6 +622,7 @@ def make_output_row(
 ) -> dict[str, Any]:
     return {
         "question_id": source_row.get("question_id") or source_row.get("id"),
+        "official_test_id": source_row.get("official_test_id"),
         "db_id": source_row.get("db_id"),
         "split": source_row.get("split"),
         "level": source_row.get("level"),
@@ -850,6 +853,7 @@ def run_execution_error_rows(
         except Exception as exc:
             output_row = {
                 "question_id": row.get("question_id") or row.get("id"),
+                "official_test_id": row.get("official_test_id"),
                 "db_id": row.get("db_id"),
                 "split": row.get("split"),
                 "level": row.get("level"),
@@ -947,6 +951,56 @@ def run_verification_rows(
     output_path: Path,
     args: argparse.Namespace,
 ) -> int:
+    if args.strict_resume and output_path.exists():
+        input_by_id: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            question_id = get_question_id(row, args.question_key)
+            if question_id in input_by_id:
+                raise ValueError(f"Verification input has duplicate question_id: {question_id}")
+            input_by_id[question_id] = row
+        successful_ids: set[str] = set()
+        for existing in read_jsonl(output_path):
+            question_id = get_question_id(existing, args.question_key)
+            source = input_by_id.get(question_id)
+            if source is None:
+                raise ValueError(f"Verification output has foreign question_id: {question_id}")
+            if existing.get("status") in (None, "success"):
+                if question_id in successful_ids:
+                    raise ValueError(
+                        f"Verification output has duplicate successful question_id: {question_id}"
+                    )
+                successful_ids.add(question_id)
+            expected_key = get_run_key(
+                row=source,
+                verifier_model=args.model_name,
+                question_key=args.question_key,
+                sql_key=args.sql_key,
+                profile_mode=args.profile_mode,
+                probing_mode=args.probing_mode,
+                intent_mode=args.intent_mode,
+                max_probes=args.max_probes,
+            )
+            actual_key = get_run_key(
+                row=existing,
+                verifier_model=args.model_name,
+                question_key=args.question_key,
+                sql_key=args.sql_key,
+                profile_mode=args.profile_mode,
+                probing_mode=args.probing_mode,
+                intent_mode=args.intent_mode,
+                max_probes=args.max_probes,
+            )
+            if actual_key != expected_key:
+                raise ValueError(
+                    f"Verification output context mismatch for question_id: {question_id}"
+                )
+            for key in ("question", "official_test_id"):
+                if key in source and existing.get(key) != source.get(key):
+                    raise ValueError(
+                        f"Verification output context mismatch for question_id "
+                        f"{question_id}: {key}"
+                    )
+
     completed_keys = load_completed_keys(output_path)
 
     pending_rows: list[dict[str, Any]] = []
@@ -1069,6 +1123,7 @@ def run_verification_rows(
         except Exception as exc:
             output_row = {
                 "question_id": row.get("question_id") or row.get("id"),
+                "official_test_id": row.get("official_test_id"),
                 "db_id": row.get("db_id"),
                 "split": row.get("split"),
                 "level": row.get("level"),
@@ -1368,6 +1423,11 @@ def parse_args() -> argparse.Namespace:
             "Number of concurrent verification rows. Values above 1 are supported "
             "only with --backend ollama."
         ),
+    )
+    parser.add_argument(
+        "--strict-resume",
+        action="store_true",
+        help="Reject foreign, duplicate-success, or context-incompatible cached rows.",
     )
     parser.add_argument(
         "--evaluation-group",

@@ -104,6 +104,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workers", type=int, default=1, help="Number of concurrent repair rows. Values above 1 are supported only with Ollama backends.")
     parser.add_argument("--limit", type=int, default=None, help="Optional cap on processed input rows.")
     parser.add_argument("--overwrite", action="store_true", help="Disable resume skipping and append duplicate experiment rows.")
+    parser.add_argument(
+        "--strict-resume",
+        action="store_true",
+        help="Reject duplicate, foreign, or output-context-incompatible cached rows.",
+    )
     return parser.parse_args()
 
 
@@ -214,6 +219,59 @@ def main() -> None:
             "max_probes": args.max_probes if args.semantic_repair_framework in CHAIN_REPAIR_FRAMEWORKS else None,
         }
     )
+
+    input_by_id: dict[str, dict] = {}
+    for row in rows:
+        question_id = str(row.get("question_id") or row.get("id") or "")
+        if not question_id or question_id in input_by_id:
+            raise ValueError(f"Repair input has missing or duplicate question_id: {question_id!r}")
+        input_by_id[question_id] = row
+    existing_path = Path(args.output_path)
+    if args.strict_resume and existing_path.exists():
+        seen_ids: set[str] = set()
+        for existing in read_jsonl(existing_path):
+            question_id = str(existing.get("question_id") or existing.get("id") or "")
+            if question_id in seen_ids:
+                raise ValueError(f"Repair output has duplicate question_id: {question_id}")
+            source = input_by_id.get(question_id)
+            if source is None:
+                raise ValueError(f"Repair output has foreign question_id: {question_id}")
+            for key in ("question", "official_test_id"):
+                if key in source and existing.get(key) != source.get(key):
+                    raise ValueError(
+                        f"Repair output context mismatch for question_id "
+                        f"{question_id}: {key}"
+                    )
+            is_candidate, repair_mode, _ = classify_candidate_row(source)
+            expected_mode = (
+                args.semantic_repair_framework
+                if args.semantic_repair_framework in SCHEMA_ANNOTATION_FRAMEWORKS
+                and repair_mode == "semantic"
+                else repair_mode
+            )
+            expected_key = get_repair_run_key(
+                row=source,
+                repair_mode=expected_mode or "unknown",
+                repair_model=args.repair_model_name,
+                intent_mode=args.intent_mode,
+                repair_context_hash=repair_context_hash,
+            )
+            actual_mode = existing.get("repair_mode")
+            if existing.get("status") == "skipped" and not actual_mode:
+                actual_mode = "unknown"
+            actual_key = (
+                question_id,
+                str(existing.get("original_generated_sql_hash") or ""),
+                str(actual_mode or ""),
+                str(existing.get("repair_model") or ""),
+                str(existing.get("intent_mode") or ""),
+                str(existing.get("repair_context_hash") or ""),
+            )
+            if actual_key != expected_key:
+                raise ValueError(
+                    f"Repair output context mismatch for question_id: {question_id}"
+                )
+            seen_ids.add(question_id)
 
     completed_keys = load_completed_keys(args.output_path)
     pending_rows = []

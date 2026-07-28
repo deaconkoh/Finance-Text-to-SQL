@@ -351,17 +351,18 @@ def load_booksql_records(
         if requested_split and row_split != requested_split:
             continue
 
-        records.append(
-            {
-                "question_id": row["question_id"],
-                "db_id": row["db_id"],
-                "question": row["question"],
-                "gold_sql": row.get("gold_sql"),
-                "schema": schema,
-                "level": row["level"],
-                "split": row_split,
-            }
-        )
+        record = {
+            "question_id": row["question_id"],
+            "db_id": row["db_id"],
+            "question": row["question"],
+            "gold_sql": row.get("gold_sql"),
+            "schema": schema,
+            "level": row["level"],
+            "split": row_split,
+        }
+        if "official_test_id" in row:
+            record["official_test_id"] = row["official_test_id"]
+        records.append(record)
 
     if requested_split and not records:
         raise BookSQLConfigError(

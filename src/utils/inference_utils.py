@@ -18,13 +18,49 @@ The prompt helpers preserve the project's fixed baseline prompt behavior unless
 callers explicitly choose a few-shot setting.
 """
 
+from __future__ import annotations
+
 import json
+import os
 import re
+import threading
 from pathlib import Path
 from typing import Any
 import urllib.request
 
 from src.finverisql.verifier import MaxTokensReachedError
+
+
+class _OllamaHostPool:
+    """Thread-safe round-robin selection over configured Ollama endpoints."""
+
+    def __init__(self, hosts: list[str]) -> None:
+        if not hosts:
+            raise ValueError("At least one Ollama host is required.")
+        self._hosts = tuple(host.rstrip("/") for host in hosts)
+        self._next = 0
+        self._lock = threading.Lock()
+
+    def next(self) -> str:
+        with self._lock:
+            host = self._hosts[self._next]
+            self._next = (self._next + 1) % len(self._hosts)
+        return host
+
+
+def ollama_hosts_from_env() -> list[str]:
+    """Return OLLAMA_HOSTS endpoints, preserving the legacy default."""
+
+    configured = os.environ.get("OLLAMA_HOSTS")
+    if not configured:
+        return ["http://localhost:11434"]
+    hosts = [item.strip().rstrip("/") for item in configured.split(",") if item.strip()]
+    if not hosts:
+        raise ValueError("OLLAMA_HOSTS is set but contains no endpoints.")
+    invalid = [host for host in hosts if not host.startswith(("http://", "https://"))]
+    if invalid:
+        raise ValueError(f"OLLAMA_HOSTS contains invalid endpoint(s): {', '.join(invalid)}")
+    return hosts
 
 
 def build_ollama_generate_fn(
@@ -56,8 +92,11 @@ def build_ollama_generate_fn(
         ValueError: When Ollama returns no final content.
 
     Assumption:
-        Ollama is available at `http://localhost:11434/api/chat`.
+        Endpoints come from comma-separated ``OLLAMA_HOSTS``. When unset, the
+        legacy ``http://localhost:11434`` endpoint is used.
     """
+    host_pool = _OllamaHostPool(ollama_hosts_from_env())
+
     def generate(prompt: str) -> str:
         """Send one prompt to Ollama and return final assistant content."""
         payload = {
@@ -82,7 +121,7 @@ def build_ollama_generate_fn(
             payload["think"] = think
 
         request = urllib.request.Request(
-            "http://localhost:11434/api/chat",
+            f"{host_pool.next()}/api/chat",
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -497,9 +536,11 @@ def load_completed_run_keys(output_path: str | Path) -> set[tuple[str, str | Non
         for line in f:
             try:
                 row = json.loads(line)
+                if row.get("status") not in (None, "success"):
+                    continue
                 completed.add(
                     (
-                        row["question_id"],
+                        str(row["question_id"]),
                         row.get("generator") or row.get("model_key"),
                         row.get("prompt_setting", "zero_shot"),
                     )

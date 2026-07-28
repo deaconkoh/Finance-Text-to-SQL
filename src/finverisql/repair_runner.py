@@ -1731,6 +1731,8 @@ def load_completed_keys(output_path: str | Path) -> set[tuple[str, str, str, str
                 row = json.loads(line)
             except Exception:
                 continue
+            if row.get("status") not in (None, "success", "skipped"):
+                continue
 
             repair_mode = row.get("repair_mode")
             if row.get("status") == "skipped" and not repair_mode:
@@ -1788,6 +1790,7 @@ def build_attempt_output_row(
 
     return {
         "question_id": source_row.get("question_id") or source_row.get("id"),
+        "official_test_id": source_row.get("official_test_id"),
         "db_id": source_row.get("db_id"),
         "split": source_row.get("split"),
         "level": source_row.get("level"),

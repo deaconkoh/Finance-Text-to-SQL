@@ -51,6 +51,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--adapter-inference-batch-size", type=int, default=4)
     parser.add_argument("--ollama-workers", type=int, default=4)
     parser.add_argument(
+        "--prompt-ollama-hosts",
+        default=None,
+        help="Optional OLLAMA_HOSTS override for prompted generation subprocesses.",
+    )
+    parser.add_argument(
         "--parallel-adapter-strategies",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -153,33 +158,37 @@ def strategy_command(args: argparse.Namespace, strategy: str) -> list[str]:
         command.extend(["--rl-adapter-path", adapter_path])
     if args.no_4bit:
         command.append("--no-4bit")
+    if args.prompt_ollama_hosts:
+        command.extend(["--prompt-ollama-hosts", args.prompt_ollama_hosts])
     return command
 
 
-def run_parallel_adapter_generation(args: argparse.Namespace) -> None:
-    adapter_strategies = [
-        strategy for strategy in args.strategies if strategy in {"sft_llama31_8b", "rl_llama31_8b"}
-    ]
-    if len(adapter_strategies) < 2 or not args.parallel_adapter_strategies:
-        return
+def run_parallel_generation(args: argparse.Namespace) -> set[str]:
+    parallel_strategies = list(args.strategies)
+    if len(parallel_strategies) < 2 or not args.parallel_adapter_strategies:
+        return set()
     if not args.sft_adapter_path or not args.rl_adapter_path:
         raise ValueError(
             "--sft-adapter-path and --rl-adapter-path are required when "
             "parallel adapter generation is enabled."
         )
     processes: list[tuple[subprocess.Popen[bytes], object]] = []
-    for gpu_index, strategy in enumerate(adapter_strategies):
+    for strategy in parallel_strategies:
         env = os.environ.copy()
-        env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
+        gpu_index = {"sft_llama31_8b": "0", "rl_llama31_8b": "1"}.get(strategy)
+        if gpu_index is not None:
+            env["CUDA_VISIBLE_DEVICES"] = gpu_index
+        elif args.prompt_ollama_hosts:
+            env["OLLAMA_HOSTS"] = args.prompt_ollama_hosts
         command = strategy_command(args, strategy)
         log_path = Path(args.output_dir) / f"{strategy}_generation.log"
         log_handle = log_path.open("a", encoding="utf-8")
         log_handle.write(
-            f"\nCUDA_VISIBLE_DEVICES={gpu_index} $ {' '.join(command)}\n"
+            f"\nCUDA_VISIBLE_DEVICES={gpu_index or '<ollama>'} $ {' '.join(command)}\n"
         )
         log_handle.flush()
         print(
-            f"CUDA_VISIBLE_DEVICES={gpu_index}; live log: {log_path}",
+            f"device={gpu_index or args.prompt_ollama_hosts or 'ollama-default'}; live log: {log_path}",
             flush=True,
         )
         processes.append(
@@ -192,6 +201,7 @@ def run_parallel_adapter_generation(args: argparse.Namespace) -> None:
             log_handle.close()
     if any(return_code != 0 for return_code in failures):
         raise subprocess.CalledProcessError(next(code for code in failures if code != 0), "adapter generation")
+    return set(parallel_strategies)
 
 
 def dependency_versions() -> dict[str, str | None]:
@@ -218,46 +228,88 @@ def evaluate_strategy(
     asa_md = output_dir / f"{strategy}_asa_metrics.md"
     asa_rows = output_dir / f"{strategy}_asa_rows.jsonl"
 
-    run_cmd(
-        [
-            sys.executable,
-            "-m",
-            "src.eval.evaluate_final_sql",
-            "--input-jsonl",
-            str(repair_jsonl),
-            "--output-jsonl",
-            str(final_eval),
-            "--metrics-json",
-            str(final_metrics),
-            "--metrics-md",
-            str(final_metrics_md),
-            "--adapted-jsonl",
-            str(adapted_jsonl),
-            "--db-path",
-            args.db_path,
-            "--workers",
-            str(args.workers),
-        ]
-    )
-    run_cmd(
-        [
-            sys.executable,
-            "-m",
-            "src.eval.evaluate_asa",
-            "--before-jsonl",
-            args.baseline_eval_jsonl,
-            "--after-jsonl",
-            str(final_eval),
-            "--schema-path",
-            args.schema_annotations_path,
-            "--output-json",
-            str(asa_json),
-            "--output-md",
-            str(asa_md),
-            "--row-output-jsonl",
-            str(asa_rows),
-        ]
-    )
+    cache_script = str(PROJECT_ROOT / "scripts/dev/baseline_evaluation_cache.py")
+    evaluation_cache = output_dir / f"{strategy}_final_evaluation_manifest.json"
+    evaluation_cache_command = [
+        sys.executable,
+        cache_script,
+        "--stage", "evaluation",
+        "--evaluation-kind", "final",
+        "--input-jsonl", str(repair_jsonl),
+        "--db-path", args.db_path,
+        "--schema-path", args.schema_annotations_path,
+        "--manifest", str(evaluation_cache),
+        "--output-jsonl", str(final_eval),
+        "--metrics-json", str(final_metrics),
+        "--metrics-md", str(final_metrics_md),
+        "--required-output", str(adapted_jsonl),
+    ]
+    if subprocess.run(evaluation_cache_command, check=False).returncode != 0:
+        run_cmd(
+            [
+                sys.executable,
+                "-m",
+                "src.eval.evaluate_final_sql",
+                "--input-jsonl",
+                str(repair_jsonl),
+                "--output-jsonl",
+                str(final_eval),
+                "--metrics-json",
+                str(final_metrics),
+                "--metrics-md",
+                str(final_metrics_md),
+                "--adapted-jsonl",
+                str(adapted_jsonl),
+                "--db-path",
+                args.db_path,
+                "--workers",
+                str(args.workers),
+            ]
+        )
+        run_cmd([*evaluation_cache_command, "--refresh"])
+
+    asa_cache = output_dir / f"{strategy}_asa_manifest.json"
+    asa_cache_command = [
+        sys.executable,
+        cache_script,
+        "--stage", "asa",
+        "--evaluation-kind", "final",
+        "--input-jsonl", str(final_eval),
+        "--before-jsonl", args.baseline_eval_jsonl,
+        "--after-jsonl", str(final_eval),
+        "--db-path", args.db_path,
+        "--schema-path", args.schema_annotations_path,
+        "--manifest", str(asa_cache),
+        "--output-jsonl", str(asa_rows),
+        "--metrics-json", str(asa_json),
+        "--metrics-md", str(asa_md),
+        "--row-output-jsonl", str(asa_rows),
+    ]
+    if subprocess.run(asa_cache_command, check=False).returncode != 0:
+        run_cmd(
+            [
+                sys.executable,
+                "-m",
+                "src.eval.evaluate_asa",
+                "--before-jsonl",
+                args.baseline_eval_jsonl,
+                "--after-jsonl",
+                str(final_eval),
+                "--schema-path",
+                args.schema_annotations_path,
+                "--output-json",
+                str(asa_json),
+                "--output-md",
+                str(asa_md),
+                "--row-output-jsonl",
+                str(asa_rows),
+                "--dedupe",
+                "error",
+                "--workers",
+                str(args.workers),
+            ]
+        )
+        run_cmd([*asa_cache_command, "--refresh"])
 
 
 def main() -> None:
@@ -279,6 +331,7 @@ def main() -> None:
         "strategies": args.strategies,
         "adapter_inference_batch_size": args.adapter_inference_batch_size,
         "ollama_workers": args.ollama_workers,
+        "prompt_ollama_hosts": args.prompt_ollama_hosts,
         "parallel_adapter_strategies": args.parallel_adapter_strategies,
         "adapter_devices": {"sft_llama31_8b": "0", "rl_llama31_8b": "1"},
         "dependency_versions": dependency_versions(),
@@ -289,13 +342,9 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    run_parallel_adapter_generation(args)
-    parallel_adapters = (
-        args.parallel_adapter_strategies
-        and {"sft_llama31_8b", "rl_llama31_8b"}.issubset(args.strategies)
-    )
+    parallel_completed = run_parallel_generation(args)
     for strategy in args.strategies:
-        if not (parallel_adapters and strategy in {"sft_llama31_8b", "rl_llama31_8b"}):
+        if strategy not in parallel_completed:
             generate_strategy(strategy, output_dir, schema_text, args)
 
     # Child generation processes write their own narrow manifests. Restore the

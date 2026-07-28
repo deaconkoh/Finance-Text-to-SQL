@@ -53,6 +53,7 @@ For few-shot sample runs:
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 import json
 import sys
 from pathlib import Path
@@ -178,6 +179,9 @@ def run_baseline_inference(
     model_metadata: dict[str, Any],
     prompt_setting: str = DEFAULT_PROMPT_SETTING,
     few_shot_examples: list[dict[str, Any]] | None = None,
+    workers: int = 1,
+    attempt_log_path: Path | None = None,
+    require_all_success: bool = False,
 ) -> None:
     """Run append-only baseline inference over prepared BookSQL records.
 
@@ -207,76 +211,144 @@ def run_baseline_inference(
     if prompt_setting == "few_shot" and not few_shot_examples:
         raise ValueError("few_shot prompting requires selected train examples.")
 
+    if workers <= 0:
+        raise ValueError("workers must be >= 1.")
+    attempt_path = attempt_log_path or output_path
     completed_keys = load_completed_run_keys(output_path)
+    if attempt_path != output_path:
+        completed_keys |= load_completed_run_keys(attempt_path)
     print(f"Already completed for this output file: {len(completed_keys)}")
 
-    with output_path.open("a", encoding="utf-8") as f:
-        for record in tqdm(records):
-            run_key = (record["question_id"], generator, prompt_setting)
+    def run_one(record: dict[str, Any]) -> dict[str, Any]:
+        try:
+            if prompt_setting == "few_shot":
+                prompt = build_few_shot_prompt(
+                    question=record["question"],
+                    schema=record["schema"],
+                    examples=few_shot_examples,
+                )
+            else:
+                prompt = build_zero_shot_prompt(
+                    question=record["question"],
+                    schema=record["schema"],
+                )
 
-            if run_key in completed_keys:
+            raw_output = generate_fn(prompt)
+            generated_sql = extract_sql(raw_output)
+            if not generated_sql.strip():
+                raise ValueError("Model returned no non-empty SQL.")
+
+            result = {
+                "question_id": record["question_id"],
+                "db_id": record["db_id"],
+                "split": record["split"],
+                "level": record["level"],
+                "generator": generator,
+                "prompt_setting": prompt_setting,
+                "question": record["question"],
+                "gold_sql": record["gold_sql"],
+                "generated_sql": generated_sql,
+                "raw_output": raw_output,
+                "model_metadata": model_metadata,
+                "status": "success",
+                "error": None,
+            }
+        except Exception as exc:
+            result = {
+                "question_id": record.get("question_id"),
+                "db_id": record.get("db_id"),
+                "split": record.get("split"),
+                "level": record.get("level"),
+                "generator": generator,
+                "prompt_setting": prompt_setting,
+                "question": record.get("question"),
+                "gold_sql": record.get("gold_sql"),
+                "generated_sql": None,
+                "raw_output": None,
+                "model_metadata": model_metadata,
+                "status": "failed",
+                "error": str(exc),
+            }
+        if "official_test_id" in record:
+            result["official_test_id"] = record["official_test_id"]
+        if prompt_setting == "few_shot":
+            result["few_shot_examples"] = few_shot_examples
+        return result
+
+    pending = [
+        record for record in records
+        if (str(record["question_id"]), generator, prompt_setting) not in completed_keys
+    ]
+    attempt_path.parent.mkdir(parents=True, exist_ok=True)
+    with attempt_path.open("a", encoding="utf-8") as handle:
+        if workers == 1:
+            iterator = ((record, run_one(record)) for record in pending)
+            for record, result in tqdm(iterator, total=len(pending)):
+                handle.write(json.dumps(result, ensure_ascii=False) + "\n")
+                handle.flush()
+        else:
+            row_iter = iter(pending)
+            futures: dict[Future[dict[str, Any]], dict[str, Any]] = {}
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                with tqdm(total=len(pending)) as progress:
+                    for _ in range(workers):
+                        try:
+                            record = next(row_iter)
+                        except StopIteration:
+                            break
+                        futures[executor.submit(run_one, record)] = record
+                    while futures:
+                        done, _ = wait(futures, return_when=FIRST_COMPLETED)
+                        for future in done:
+                            record = futures.pop(future)
+                            handle.write(json.dumps(future.result(), ensure_ascii=False) + "\n")
+                            handle.flush()
+                            progress.update(1)
+                            try:
+                                next_record = next(row_iter)
+                            except StopIteration:
+                                continue
+                            futures[executor.submit(run_one, next_record)] = next_record
+
+    if attempt_path != output_path:
+        successful: dict[tuple[str, str | None, str], dict[str, Any]] = {}
+        for path in (output_path, attempt_path):
+            if not path.exists():
                 continue
-
-            try:
-                if prompt_setting == "few_shot":
-                    prompt = build_few_shot_prompt(
-                        question=record["question"],
-                        schema=record["schema"],
-                        examples=few_shot_examples,
-                    )
-                else:
-                    prompt = build_zero_shot_prompt(
-                        question=record["question"],
-                        schema=record["schema"],
-                    )
-
-                raw_output = generate_fn(prompt)
-                # Keep raw_output untouched for auditability; generated_sql is
-                # the cleaned field used by evaluation and parsing.
-                generated_sql = extract_sql(raw_output)
-
-                result = {
-                    "question_id": record["question_id"],
-                    "db_id": record["db_id"],
-                    "split": record["split"],
-                    "level": record["level"],
-                    "generator": generator,
-                    "prompt_setting": prompt_setting,
-                    "question": record["question"],
-                    "gold_sql": record["gold_sql"],
-                    "generated_sql": generated_sql,
-                    "raw_output": raw_output,
-                    "model_metadata": model_metadata,
-                    "status": "success",
-                    "error": None,
-                }
-
-                if prompt_setting == "few_shot":
-                    result["few_shot_examples"] = few_shot_examples
-
-            except Exception as exc:
-                result = {
-                    "question_id": record.get("question_id"),
-                    "db_id": record.get("db_id"),
-                    "split": record.get("split"),
-                    "level": record.get("level"),
-                    "generator": generator,
-                    "prompt_setting": prompt_setting,
-                    "question": record.get("question"),
-                    "gold_sql": record.get("gold_sql"),
-                    "generated_sql": None,
-                    "raw_output": None,
-                    "model_metadata": model_metadata,
-                    "status": "failed",
-                    "error": str(exc),
-                }
-
-                if prompt_setting == "few_shot":
-                    result["few_shot_examples"] = few_shot_examples
-
-            f.write(json.dumps(result, ensure_ascii=False) + "\n")
-            f.flush()
-            completed_keys.add(run_key)
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if row.get("status") != "success":
+                    continue
+                key = (
+                    str(row.get("question_id")),
+                    row.get("generator") or row.get("model_key"),
+                    row.get("prompt_setting", "zero_shot"),
+                )
+                existing = successful.get(key)
+                if existing is not None and existing != row:
+                    raise ValueError(f"Multiple successful baseline attempts for question_id={key[0]}")
+                successful[key] = row
+        ordered = []
+        missing = []
+        for record in records:
+            key = (str(record["question_id"]), generator, prompt_setting)
+            row = successful.get(key)
+            if row is None:
+                missing.append(str(record["question_id"]))
+            else:
+                ordered.append(row)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in ordered),
+            encoding="utf-8",
+        )
+        if require_all_success and missing:
+            raise RuntimeError(
+                f"Baseline generation has {len(missing)} failed or missing rows; "
+                f"resume the same command. First IDs: {missing[:5]}"
+            )
 
     print(f"Saved results to {output_path}")
 
@@ -402,6 +474,22 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=300,
         help="Ollama HTTP timeout in seconds for Qwen baseline generation.",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Concurrent generation workers. Values above 1 require the Ollama backend.",
+    )
+    parser.add_argument(
+        "--attempt-log-path",
+        default=None,
+        help="Optional append-only attempt JSONL; --output-path is then rewritten canonically in input order.",
+    )
+    parser.add_argument(
+        "--require-all-success",
+        action="store_true",
+        help="Exit non-zero unless every selected input row has a successful canonical result.",
     )
     parser.add_argument(
         "--model-path",
@@ -735,6 +823,10 @@ def main() -> None:
         None. Writes append-only JSONL output through `run_baseline_inference`.
     """
     args = parse_args()
+    if args.workers <= 0:
+        raise ValueError("--workers must be >= 1.")
+    if args.workers > 1 and (args.model != "qwen" or args.backend != "ollama"):
+        raise ValueError("--workers > 1 is supported only for Qwen with --backend ollama.")
 
     output_path = resolve_output_path(args)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -760,6 +852,9 @@ def main() -> None:
         model_metadata=model_metadata,
         prompt_setting=args.prompt_setting,
         few_shot_examples=few_shot_examples,
+        workers=args.workers,
+        attempt_log_path=Path(args.attempt_log_path) if args.attempt_log_path else None,
+        require_all_success=args.require_all_success,
     )
 
 

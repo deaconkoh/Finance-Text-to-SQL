@@ -14,6 +14,7 @@ delegated to the existing FCR implementation and can be injected in tests.
 from __future__ import annotations
 
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
 from src.asa_metrics.financial_contradiction import (
@@ -167,19 +168,27 @@ def evaluate_asa_rows(
     label: str | None = None,
     inv_checker: Checker | None = None,
     include_fcr_details: bool = False,
+    workers: int = 1,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Evaluate rows and return aggregate ASA metrics plus row diagnostics."""
 
-    diagnostics = [
-        evaluate_asa_row(
+    if workers < 1:
+        raise ValueError("ASA workers must be >= 1.")
+
+    def evaluate(row: dict[str, Any]) -> dict[str, Any]:
+        return evaluate_asa_row(
             row,
             schema_annotations,
             label=label,
             inv_checker=inv_checker,
             include_fcr_details=include_fcr_details,
         )
-        for row in rows
-    ]
+
+    if workers == 1 or len(rows) <= 1:
+        diagnostics = [evaluate(row) for row in rows]
+    else:
+        with ThreadPoolExecutor(max_workers=min(workers, len(rows))) as executor:
+            diagnostics = list(executor.map(evaluate, rows))
 
     execution_available = [row for row in diagnostics if row["EX"] in {0, 1}]
     ex_pass = [row for row in diagnostics if row["EX"] == 1]
