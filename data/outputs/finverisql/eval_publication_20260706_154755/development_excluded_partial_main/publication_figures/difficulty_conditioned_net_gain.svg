@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="535" viewBox="0 0 1200 535" role="img">
+<style>
+text { font-family: Arial, Helvetica, sans-serif; fill: #18181b; }
+.title { font-size: 24px; font-weight: 700; }
+.subtitle { font-size: 14px; fill: #52525b; }
+.label { font-size: 13px; }
+.small { font-size: 12px; fill: #52525b; }
+.tick { font-size: 11px; fill: #71717a; }
+</style>
+<rect x="0" y="0" width="1200" height="535" fill="white"/>
+<text class="label" text-anchor="middle" x="522.5" y="38" font-weight="700" style="font-size: 25px;">Medium</text>
+<text class="label" text-anchor="middle" x="937.5" y="38" font-weight="700" style="font-size: 25px;">Hard</text>
+<text class="label" text-anchor="end" x="293" y="152.0" style="font-size: 23px;">Generic self-refine</text>
+<rect x="315.0" y="88.0" width="415.0" height="114.0" fill="#ebc7ac" stroke="#ffffff" stroke-width="4"/>
+<text class="label" text-anchor="middle" x="522.5" y="154.0" font-weight="700" style="font-size: 27px; fill: #18181b;">−0.80 pp</text>
+<rect x="730.0" y="88.0" width="415.0" height="114.0" fill="#d55e00" stroke="#ffffff" stroke-width="4"/>
+<text class="label" text-anchor="middle" x="937.5" y="154.0" font-weight="700" style="font-size: 27px; fill: #ffffff;">−5.55 pp</text>
+<text class="label" text-anchor="end" x="293" y="266.0" style="font-size: 23px;">Execution-guided</text>
+<rect x="315.0" y="202.0" width="415.0" height="114.0" fill="#eed7c6" stroke="#ffffff" stroke-width="4"/>
+<text class="label" text-anchor="middle" x="522.5" y="268.0" font-weight="700" style="font-size: 27px; fill: #18181b;">−0.08 pp</text>
+<rect x="730.0" y="202.0" width="415.0" height="114.0" fill="#abcde1" stroke="#ffffff" stroke-width="4"/>
+<text class="label" text-anchor="middle" x="937.5" y="268.0" font-weight="700" style="font-size: 27px; fill: #18181b;">+0.80 pp</text>
+<text class="label" text-anchor="end" x="293" y="380.0" font-weight="700" style="font-size: 23px;">ADiR</text>
+<rect x="315.0" y="316.0" width="415.0" height="114.0" fill="#b7d4e4" stroke="#ffffff" stroke-width="4"/>
+<text class="label" text-anchor="middle" x="522.5" y="382.0" font-weight="700" style="font-size: 27px; fill: #18181b;">+0.46 pp</text>
+<rect x="730.0" y="316.0" width="415.0" height="114.0" fill="#adcee1" stroke="#ffffff" stroke-width="4"/>
+<text class="label" text-anchor="middle" x="937.5" y="382.0" font-weight="700" style="font-size: 27px; fill: #18181b;">+0.76 pp</text>
+<rect x="360.0" y="466" width="28" height="28" fill="#d55e00" stroke="#d4d4d8"/>
+<text class="small" x="400.0" y="488" style="font-size: 18px;">Negative net gain</text>
+<rect x="607.0" y="466" width="28" height="28" fill="#f4f4f5" stroke="#d4d4d8"/>
+<text class="small" x="647.0" y="488" style="font-size: 18px;">Near zero</text>
+<rect x="854.0" y="466" width="28" height="28" fill="#0072b2" stroke="#d4d4d8"/>
+<text class="small" x="894.0" y="488" style="font-size: 18px;">Positive net gain</text>
+</svg>

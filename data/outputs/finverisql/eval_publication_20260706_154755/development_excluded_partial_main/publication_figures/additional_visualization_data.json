@@ -1,0 +1,183 @@
+{
+  "cohort_root": "/Users/deaconkoh/Desktop/Finance-Text-to-SQL/data/outputs/finverisql/eval_publication_20260706_154755/development_excluded_partial_main",
+  "source_artifacts": {
+    "baseline_evaluated": "data/outputs/finverisql/eval_publication_20260706_154755/development_excluded_partial_main/metrics/baseline/evaluated.jsonl",
+    "baseline_asa": "data/outputs/finverisql/eval_publication_20260706_154755/development_excluded_partial_main/metrics/baseline/asa_metrics.json",
+    "generic_self_refine_evaluated": "data/outputs/finverisql/eval_publication_20260706_154755/development_excluded_partial_main/metrics/main_comparison/generic_self_refine/final_evaluated.jsonl",
+    "generic_self_refine_asa": "data/outputs/finverisql/eval_publication_20260706_154755/development_excluded_partial_main/metrics/main_comparison/generic_self_refine/asa_metrics.json",
+    "generic_execution_guided_refine_evaluated": "data/outputs/finverisql/eval_publication_20260706_154755/development_excluded_partial_main/metrics/main_comparison/generic_execution_guided_refine/final_evaluated.jsonl",
+    "generic_execution_guided_refine_asa": "data/outputs/finverisql/eval_publication_20260706_154755/development_excluded_partial_main/metrics/main_comparison/generic_execution_guided_refine/asa_metrics.json",
+    "adir_full_evaluated": "data/outputs/finverisql/eval_publication_20260706_154755/development_excluded_partial_main/metrics/finverisql_full/final_evaluated.jsonl",
+    "adir_full_asa": "data/outputs/finverisql/eval_publication_20260706_154755/development_excluded_partial_main/metrics/finverisql_full/asa_metrics.json"
+  },
+  "repair_correction_yield": {
+    "eligible_count": 4874,
+    "definition": "EX wrong-to-correct rows / rows with an applied repair",
+    "suggested_caption": "Repair yield among applied revisions. Repair yield is the proportion of applied repairs that convert an EX-incorrect prediction into an EX-correct prediction. Points show observed yield, and whiskers denote 95% Wilson confidence intervals. ADiR requires approximately 5.0 applied repairs per correction, compared with 46.2 for execution-guided refinement and 52.3 for self-refine.",
+    "systems": [
+      {
+        "key": "generic_self_refine",
+        "label": "Generic self-refine",
+        "eligible_count": 4874,
+        "applied_repair_count": 1675,
+        "correction_count": 32,
+        "corruption_count": 189,
+        "correction_yield": 0.0191044776119403,
+        "wilson_95_lower": 0.01356483002362249,
+        "wilson_95_upper": 0.026844857540532317,
+        "repairs_per_correction": 52.34375
+      },
+      {
+        "key": "generic_execution_guided_refine",
+        "label": "Execution-guided",
+        "eligible_count": 4874,
+        "applied_repair_count": 1755,
+        "correction_count": 38,
+        "corruption_count": 20,
+        "correction_yield": 0.021652421652421653,
+        "wilson_95_lower": 0.015815438684741223,
+        "wilson_95_upper": 0.029578907929209954,
+        "repairs_per_correction": 46.18421052631579
+      },
+      {
+        "key": "adir_full",
+        "label": "ADiR",
+        "eligible_count": 4874,
+        "applied_repair_count": 151,
+        "correction_count": 30,
+        "corruption_count": 0,
+        "correction_yield": 0.1986754966887417,
+        "wilson_95_lower": 0.14286154428419245,
+        "wilson_95_upper": 0.26944055689028895,
+        "repairs_per_correction": 5.033333333333333
+      }
+    ]
+  },
+  "difficulty_conditioned_net_gain": {
+    "eligible_count": 4874,
+    "difficulty_levels": [
+      {
+        "difficulty": "medium",
+        "cohort_count": 2389
+      },
+      {
+        "difficulty": "hard",
+        "cohort_count": 2485
+      }
+    ],
+    "definition": "(EX corrections - EX corruptions) / difficulty cohort",
+    "systems": [
+      {
+        "key": "generic_self_refine",
+        "label": "Generic self-refine",
+        "cells": [
+          {
+            "difficulty": "medium",
+            "cohort_count": 2389,
+            "correction_count": 10,
+            "corruption_count": 29,
+            "net_gain_count": -19,
+            "net_gain_rate": -0.00795311845960653
+          },
+          {
+            "difficulty": "hard",
+            "cohort_count": 2485,
+            "correction_count": 22,
+            "corruption_count": 160,
+            "net_gain_count": -138,
+            "net_gain_rate": -0.055533199195171024
+          }
+        ]
+      },
+      {
+        "key": "generic_execution_guided_refine",
+        "label": "Execution-guided",
+        "cells": [
+          {
+            "difficulty": "medium",
+            "cohort_count": 2389,
+            "correction_count": 13,
+            "corruption_count": 15,
+            "net_gain_count": -2,
+            "net_gain_rate": -0.0008371703641691084
+          },
+          {
+            "difficulty": "hard",
+            "cohort_count": 2485,
+            "correction_count": 25,
+            "corruption_count": 5,
+            "net_gain_count": 20,
+            "net_gain_rate": 0.008048289738430584
+          }
+        ]
+      },
+      {
+        "key": "adir_full",
+        "label": "ADiR",
+        "cells": [
+          {
+            "difficulty": "medium",
+            "cohort_count": 2389,
+            "correction_count": 11,
+            "corruption_count": 0,
+            "net_gain_count": 11,
+            "net_gain_rate": 0.0046044370029300966
+          },
+          {
+            "difficulty": "hard",
+            "cohort_count": 2485,
+            "correction_count": 19,
+            "corruption_count": 0,
+            "net_gain_count": 19,
+            "net_gain_rate": 0.007645875251509054
+          }
+        ]
+      }
+    ]
+  },
+  "ex_asa_transfer": {
+    "eligible_count": 4874,
+    "baseline_ex_accuracy": 0.7646696758309397,
+    "baseline_asa_lower_bound_accuracy": 0.6616741895773492,
+    "asa_definition": "ASA pass rows / complete eligible cohort",
+    "suggested_caption": "Transfer from execution correctness to accounting-semantic correctness. Bars report changes from the generator-only baseline in execution accuracy and fixed-denominator ASA lower-bound accuracy. Positive values indicate net improvement. Execution-guided refinement improves EX while reducing ASA, whereas ADiR improves both metrics.",
+    "systems": [
+      {
+        "key": "generic_self_refine",
+        "label": "Generic self-refine",
+        "eligible_count": 4874,
+        "baseline_ex_count": 3727,
+        "final_ex_count": 3570,
+        "ex_delta": -0.032211735740664826,
+        "baseline_asa_pass_count": 3225,
+        "final_asa_pass_count": 3108,
+        "asa_lower_bound_delta": -0.024004924086992285,
+        "asa_decision_available_count": 4430
+      },
+      {
+        "key": "generic_execution_guided_refine",
+        "label": "Execution-guided",
+        "eligible_count": 4874,
+        "baseline_ex_count": 3727,
+        "final_ex_count": 3745,
+        "ex_delta": 0.0036930652441525824,
+        "baseline_asa_pass_count": 3225,
+        "final_asa_pass_count": 3190,
+        "asa_lower_bound_delta": -0.007180960196963571,
+        "asa_decision_available_count": 4339
+      },
+      {
+        "key": "adir_full",
+        "label": "ADiR",
+        "eligible_count": 4874,
+        "baseline_ex_count": 3727,
+        "final_ex_count": 3757,
+        "ex_delta": 0.006155108740254378,
+        "baseline_asa_pass_count": 3225,
+        "final_asa_pass_count": 3249,
+        "asa_lower_bound_delta": 0.00492408699220348,
+        "asa_decision_available_count": 4386
+      }
+    ]
+  }
+}

@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img">
+<style>
+text { font-family: Arial, Helvetica, sans-serif; fill: #18181b; }
+.title { font-size: 24px; font-weight: 700; }
+.subtitle { font-size: 14px; fill: #52525b; }
+.label { font-size: 13px; }
+.small { font-size: 12px; fill: #52525b; }
+.tick { font-size: 11px; fill: #71717a; }
+</style>
+<rect x="0" y="0" width="1200" height="520" fill="white"/>
+<defs>
+<pattern id="exBarPattern" patternUnits="userSpaceOnUse" width="9" height="9">
+<rect width="9" height="9" fill="#2563eb"/>
+<path d="M-2 2 L2 -2 M0 9 L9 0 M7 11 L11 7" stroke="#dbeafe" stroke-width="1.4" opacity="0.80"/>
+</pattern>
+<pattern id="asaBarPattern" patternUnits="userSpaceOnUse" width="8" height="8">
+<rect width="8" height="8" fill="#16a34a"/>
+<circle cx="2" cy="2" r="1.2" fill="#dcfce7" opacity="0.90"/>
+<circle cx="6" cy="6" r="1.2" fill="#dcfce7" opacity="0.90"/>
+</pattern>
+</defs>
+<rect x="285.0" y="22" width="24" height="18" fill="url(#exBarPattern)" stroke="#1e40af" stroke-width="1.4"/>
+<text class="small" x="319.0" y="38" style="font-size: 19px;">EX</text>
+<rect x="495.0" y="22" width="24" height="18" fill="url(#asaBarPattern)" stroke="#166534" stroke-width="1.4"/>
+<text class="small" x="529.0" y="38" style="font-size: 19px;">ASA lower bound</text>
+<line x1="303.5" y1="72" x2="303.5" y2="430" stroke="#d4d4d8" stroke-width="1"/>
+<text class="tick" text-anchor="middle" x="303.5" y="459" style="font-size: 18px;">−3.5</text>
+<line x1="395.9" y1="72" x2="395.9" y2="430" stroke="#d4d4d8" stroke-width="1"/>
+<text class="tick" text-anchor="middle" x="395.9" y="459" style="font-size: 18px;">−3.0</text>
+<line x1="580.7" y1="72" x2="580.7" y2="430" stroke="#d4d4d8" stroke-width="1"/>
+<text class="tick" text-anchor="middle" x="580.7" y="459" style="font-size: 18px;">−2.0</text>
+<line x1="765.4" y1="72" x2="765.4" y2="430" stroke="#d4d4d8" stroke-width="1"/>
+<text class="tick" text-anchor="middle" x="765.4" y="459" style="font-size: 18px;">−1.0</text>
+<line x1="950.2" y1="72" x2="950.2" y2="430" stroke="#d4d4d8" stroke-width="1"/>
+<text class="tick" text-anchor="middle" x="950.2" y="459" style="font-size: 18px;">0.0</text>
+<line x1="1042.6" y1="72" x2="1042.6" y2="430" stroke="#d4d4d8" stroke-width="1"/>
+<text class="tick" text-anchor="middle" x="1042.6" y="459" style="font-size: 18px;">+0.5</text>
+<line x1="1135.0" y1="72" x2="1135.0" y2="430" stroke="#d4d4d8" stroke-width="1"/>
+<text class="tick" text-anchor="middle" x="1135.0" y="459" style="font-size: 18px;">+1.0</text>
+<text class="label" text-anchor="end" x="263" y="138.7" style="font-size: 23px;">Generic self-refine</text>
+<rect x="355.0" y="104.7" width="595.2" height="24" fill="url(#exBarPattern)" stroke="#1e40af" stroke-width="1.2"/>
+<text class="small" text-anchor="end" x="345.0" y="123.7" style="font-size: 18px;">−3.22 pp</text>
+<rect x="506.6" y="134.7" width="443.6" height="24" fill="url(#asaBarPattern)" stroke="#166534" stroke-width="1.2"/>
+<text class="small" text-anchor="end" x="496.6" y="153.7" style="font-size: 18px;">−2.40 pp</text>
+<text class="label" text-anchor="end" x="263" y="258.0" style="font-size: 23px;">Execution-guided</text>
+<rect x="950.2" y="224.0" width="68.2" height="24" fill="url(#exBarPattern)" stroke="#1e40af" stroke-width="1.2"/>
+<text class="small" text-anchor="start" x="1028.5" y="243.0" style="font-size: 18px;">+0.37 pp</text>
+<rect x="817.5" y="254.0" width="132.7" height="24" fill="url(#asaBarPattern)" stroke="#166534" stroke-width="1.2"/>
+<text class="small" text-anchor="end" x="807.5" y="273.0" style="font-size: 18px;">−0.72 pp</text>
+<text class="label" text-anchor="end" x="263" y="377.3" font-weight="700" style="font-size: 23px;">ADiR</text>
+<rect x="950.2" y="343.3" width="113.7" height="24" fill="url(#exBarPattern)" stroke="#1e40af" stroke-width="1.2"/>
+<text class="small" text-anchor="start" x="1074.0" y="362.3" style="font-size: 18px;">+0.62 pp</text>
+<rect x="950.2" y="373.3" width="91.0" height="24" fill="url(#asaBarPattern)" stroke="#166534" stroke-width="1.2"/>
+<text class="small" text-anchor="start" x="1051.2" y="392.3" style="font-size: 18px;">+0.49 pp</text>
+<line data-role="zero-line" x1="950.2" y1="72" x2="950.2" y2="430" stroke="#27272a" stroke-width="2.5"/>
+<text class="label" text-anchor="middle" x="710.0" y="502" font-weight="700" style="font-size: 23px;">Net repair gain (percentage points)</text>
+</svg>
