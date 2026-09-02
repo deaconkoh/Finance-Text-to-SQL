@@ -8,12 +8,27 @@ cd "$PROJECT_ROOT"
 IMAGE="ollama/ollama:latest"
 MODEL="llama3.1:8b"
 MODEL_VOLUME="/home/ranjan/finveri_ollama_workspace"
-GPU_UUIDS=(
+DEFAULT_GPU_UUIDS=(
   "GPU-3f5077d2-54da-5bdf-3bad-df04ea1f3582"
   "GPU-3e5d4bba-023c-a3c2-a664-3213f70179b6"
   "GPU-7c2d8d6f-333c-3f57-e9d7-e3c0a76a1981"
   "GPU-d05d84bd-d9d0-6666-7fdf-eaa2fe5bb2f2"
 )
+if [[ -n "${ADIR_GPU_UUIDS:-}" ]]; then
+  IFS=',' read -r -a GPU_UUIDS <<< "$ADIR_GPU_UUIDS"
+else
+  GPU_UUIDS=("${DEFAULT_GPU_UUIDS[@]}")
+fi
+if [[ "${#GPU_UUIDS[@]}" -ne 4 ]]; then
+  echo "ADIR_GPU_UUIDS must contain exactly four comma-separated GPU UUIDs." >&2
+  exit 2
+fi
+for gpu_uuid in "${GPU_UUIDS[@]}"; do
+  if [[ -z "$gpu_uuid" ]]; then
+    echo "ADIR_GPU_UUIDS must not contain empty GPU UUIDs." >&2
+    exit 2
+  fi
+done
 OLLAMA_HOSTS="http://127.0.0.1:11434,http://127.0.0.1:11435,http://127.0.0.1:11436,http://127.0.0.1:11437"
 PROMPT_OLLAMA_HOSTS="http://127.0.0.1:11436,http://127.0.0.1:11437"
 export OLLAMA_HOSTS

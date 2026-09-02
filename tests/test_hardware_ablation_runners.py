@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import time
 from pathlib import Path
 
@@ -170,6 +172,10 @@ def test_hardware_runner_contracts() -> None:
     assert "adir_ws_ollama_0" in workstation and "adir_ws_ollama_1" in workstation
     assert 'RUN_ID="eval_publication_20260706_154755"' in a100
     assert "adir_a100_ollama_3" in a100
+    assert 'if [[ -n "${ADIR_GPU_UUIDS:-}" ]]' in a100
+    assert 'IFS=\',\' read -r -a GPU_UUIDS <<< "$ADIR_GPU_UUIDS"' in a100
+    assert "ADIR_GPU_UUIDS must contain exactly four comma-separated GPU UUIDs." in a100
+    assert "GPU-3f5077d2-54da-5bdf-3bad-df04ea1f3582" in a100
     assert "--learning-rate 1e-6" in a100
     assert "--batch-size 8 --mini-batch-size 1 --ppo-epochs 1" in a100
     assert "4_run_repair_ablation.sh" not in a100
@@ -183,3 +189,33 @@ def test_hardware_runner_contracts() -> None:
     normal = official.split('if [[ "${1:-}" == "--setup-ollama" ]]', 1)[1]
     normal = normal.split("fi", 1)[1]
     assert "sudo docker" not in normal
+
+
+def test_a100_runner_rejects_non_four_gpu_override() -> None:
+    env = os.environ.copy()
+    env["ADIR_GPU_UUIDS"] = "GPU-one,GPU-two,GPU-three"
+    result = subprocess.run(
+        ["bash", str(PROJECT_ROOT / "run_a100_repair_ablation_only.sh")],
+        cwd=PROJECT_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "must contain exactly four comma-separated GPU UUIDs" in result.stderr
+
+
+def test_a100_runner_rejects_empty_gpu_override_entry() -> None:
+    env = os.environ.copy()
+    env["ADIR_GPU_UUIDS"] = "GPU-one,,GPU-three,GPU-four"
+    result = subprocess.run(
+        ["bash", str(PROJECT_ROOT / "run_a100_repair_ablation_only.sh")],
+        cwd=PROJECT_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "must not contain empty GPU UUIDs" in result.stderr
